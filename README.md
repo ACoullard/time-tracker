@@ -72,11 +72,21 @@ getIntervals
 
 SQLite via `rusqlite` (`bundled` feature). Single file at `app_data_dir()/time-tracker.db`. One `Mutex<Connection>` held in Tauri managed state.
 
-Schema:
-- `intervals(id INTEGER PK, start_ms INTEGER NOT NULL, end_ms INTEGER NULL)` — `end_ms IS NULL` = currently running
-- Timestamps as unix millis; index on `start_ms`
+Schema lives in `src-tauri/schema.sql` and is embedded at compile time via `include_str!`. Applied with `CREATE TABLE IF NOT EXISTS` at startup. SQLite's ACID guarantees protect against crash mid-write.
 
-`CREATE TABLE IF NOT EXISTS` runs at startup. SQLite's ACID guarantees protect against crash mid-write.
+Timestamps are stored as unix millis (INTEGER); `end_ms IS NULL` means the interval is currently running.
+
+### Resetting the dev database
+
+`CREATE TABLE IF NOT EXISTS` only applies to missing tables — it won't pick up column drops, renames, or type changes to existing tables. When you make a destructive schema change during development, delete the DB file and restart the app:
+
+```powershell
+Remove-Item "$env:APPDATA\com.time-tracker.app\time-tracker.db"
+```
+
+Additive changes (new tables, new indexes) don't need a reset — the next startup creates them.
+
+Once there's real user data to preserve, this gets replaced by a proper migration story (`schema_version` table + numbered migration files).
 
 ## System Tray
 
