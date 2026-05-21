@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use rusqlite::Connection;
 use tauri::{Manager, State};
 
-use tracker::{init_schema, Interval};
+use tracker::{init_schema, RangeTotal, Interval};
 
 pub struct AppState {
     db: Mutex<Connection>,
@@ -46,6 +46,16 @@ fn get_intervals(
     tracker::get_intervals(&conn, from_ms, to_ms).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn get_range_total(
+    state: State<AppState>,
+    from_ms: i64,
+    to_ms: i64,
+) -> Result<RangeTotal, String> {
+    let conn = state.db.lock().unwrap();
+    tracker::get_time_range_total(&conn, from_ms, to_ms).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -65,6 +75,7 @@ pub fn run() {
             begin_interval,
             end_interval,
             get_intervals,
+            get_range_total,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

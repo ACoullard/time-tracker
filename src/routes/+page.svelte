@@ -1,16 +1,25 @@
 <script lang="ts">
   import { Button } from "$lib/components/ui/button";
+  import RangeTotal from "$lib/components/range-total.svelte";
+  import { now } from "$lib/now.svelte";
+  import { formatElapsed } from "$lib/utils";
   import { invoke } from "@tauri-apps/api/core";
 
   let startMs = $state<number | null>(null);
   let lastDurationMs = $state<number | null>(null);
-  let now = $state(Date.now());
   let error = $state<string | null>(null);
 
   let running = $derived(startMs !== null);
   let displayMs = $derived(
-    startMs !== null ? now - startMs : (lastDurationMs ?? 0),
+    startMs !== null ? now() - startMs : (lastDurationMs ?? 0),
   );
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(todayStart);
+  todayEnd.setDate(todayEnd.getDate() + 1);
+  const todayFromMs = todayStart.getTime();
+  const todayToMs = todayEnd.getTime();
 
   $effect(() => {
     (async () => {
@@ -22,37 +31,20 @@
     })();
   });
 
-  $effect(() => {
-    if (!running) return;
-    const id = setInterval(() => {
-      now = Date.now();
-    }, 1000);
-    return () => clearInterval(id);
-  });
-
   async function toggle() {
     error = null;
     try {
       if (running) {
-        const duration = now - startMs!;
+        const duration = now() - startMs!;
         await invoke("end_interval");
         startMs = null;
         lastDurationMs = duration;
       } else {
         startMs = await invoke<number>("begin_interval");
-        now = Date.now();
       }
     } catch (e) {
       error = String(e);
     }
-  }
-
-  function formatElapsed(ms: number): string {
-    const total = Math.max(0, Math.floor(ms / 1000));
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   }
 </script>
 
@@ -64,6 +56,15 @@
   <Button onclick={toggle} class="w-full">
     {running ? "Stop" : "Start"}
   </Button>
+
+  <div class="mt-6">
+    <RangeTotal
+      fromMs={todayFromMs}
+      toMs={todayToMs}
+      isRunning={running}
+      label="Today"
+    />
+  </div>
 
   {#if error}
     <p class="text-sm text-destructive mt-4">{error}</p>

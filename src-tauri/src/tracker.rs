@@ -10,6 +10,12 @@ pub struct Interval {
     pub end_ms: Option<i64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RangeTotal {
+    pub total_ms: i64,
+    pub most_recent: Option<Interval>,
+}
+
 #[derive(Debug)]
 pub enum DbError {
     AlreadyRunning,
@@ -68,6 +74,43 @@ pub fn end_interval(conn: &Connection, now_ms: i64) -> Result<(), DbError> {
         return Err(DbError::NoneRunning);
     }
     Ok(())
+}
+
+pub fn get_time_range_total(
+    conn: &Connection,
+    from_ms: i64,
+    to_ms: i64,
+) -> rusqlite::Result<RangeTotal> {
+    let mut stmt = conn.prepare(
+        "SELECT id, start_ms, end_ms FROM intervals
+         WHERE start_ms < ?2 AND (end_ms IS NULL OR end_ms > ?1)",
+    )?;
+    let rows = stmt.query_map(params![from_ms, to_ms], |row| {
+        Ok(Interval {
+            id: row.get(0)?,
+            start_ms: row.get(1)?,
+            end_ms: row.get(2)?,
+        })
+    })?;
+
+    let mut total_ms: i64 = 0;
+    let mut most_recent: Option<Interval> = None;
+    for row in rows {
+        let interval = row?;
+        if let Some(end) = interval.end_ms {
+            total_ms += (end.min(to_ms) - interval.start_ms.max(from_ms)).max(0);
+        }
+        if most_recent
+            .as_ref()
+            .map_or(true, |m| interval.start_ms > m.start_ms)
+        {
+            most_recent = Some(interval);
+        }
+    }
+    Ok(RangeTotal {
+        total_ms,
+        most_recent,
+    })
 }
 
 pub fn get_intervals(
@@ -163,5 +206,108 @@ mod tests {
         end_interval(&conn, 2000).unwrap();
         let result = get_intervals(&conn, 5000, 6000).unwrap();
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn range_total_empty() {
+        let conn = setup();
+        let r = get_time_range_total(&conn, 0, 10_000).unwrap();
+        assert_eq!(r.total_ms, 0);
+        assert_eq!(r.most_recent, None);
+    }
+
+    #[test]
+    fn range_total_closed_inside_window() {
+        let conn = setup();
+        begin_interval(&conn, 2000).unwrap();
+        end_interval(&conn, 5000).unwrap();
+        let r = get_time_range_total(&conn, 0, 10_000).unwrap();
+        assert_eq!(r.total_ms, 3000);
+        let m = r.most_recent.unwrap();
+        assert_eq!(m.start_ms, 2000);
+        assert_eq!(m.end_ms, Some(5000));
+    }
+
+    #[test]
+    fn range_total_clipped_left() {
+        let conn = setup();
+        begin_interval(&conn, 500).unwrap();
+        end_interval(&conn, 3000).unwrap();
+        let r = get_time_range_total(&conn, 1000, 10_000).unwrap();
+        assert_eq!(r.total_ms, 2000);
+        let m = r.most_recent.unwrap();
+        assert_eq!(m.start_ms, 500);
+        assert_eq!(m.end_ms, Some(3000));
+    }
+
+    #[test]
+    fn range_total_clipped_right() {
+        let conn = setup();
+        begin_interval(&conn, 8000).unwrap();
+        end_interval(&conn, 12_000).unwrap();
+        let r = get_time_range_total(&conn, 0, 10_000).unwrap();
+        assert_eq!(r.total_ms, 2000);
+        let m = r.most_recent.unwrap();
+        assert_eq!(m.start_ms, 8000);
+        assert_eq!(m.end_ms, Some(12_000));
+    }
+
+    #[test]
+    fn range_total_closed_spans_window() {
+        let conn = setup();
+        begin_interval(&conn, 500).unwrap();
+        end_interval(&conn, 20_000).unwrap();
+        let r = get_time_range_total(&conn, 1000, 10_000).unwrap();
+        assert_eq!(r.total_ms, 9000);
+        let m = r.most_recent.unwrap();
+        assert_eq!(m.start_ms, 500);
+        assert_eq!(m.end_ms, Some(20_000));
+    }
+
+    #[test]
+    fn range_total_non_overlapping_excluded() {
+        let conn = setup();
+        begin_interval(&conn, 1000).unwrap();
+        end_interval(&conn, 2000).unwrap();
+        let r = get_time_range_total(&conn, 5000, 10_000).unwrap();
+        assert_eq!(r.total_ms, 0);
+        assert_eq!(r.most_recent, None);
+    }
+
+    #[test]
+    fn range_total_running_inside_window() {
+        let conn = setup();
+        begin_interval(&conn, 3000).unwrap();
+        let r = get_time_range_total(&conn, 0, 10_000).unwrap();
+        assert_eq!(r.total_ms, 0);
+        let m = r.most_recent.unwrap();
+        assert_eq!(m.start_ms, 3000);
+        assert_eq!(m.end_ms, None);
+    }
+
+    #[test]
+    fn range_total_running_clipped_left() {
+        let conn = setup();
+        begin_interval(&conn, 500).unwrap();
+        let r = get_time_range_total(&conn, 1000, 10_000).unwrap();
+        assert_eq!(r.total_ms, 0);
+        let m = r.most_recent.unwrap();
+        assert_eq!(m.start_ms, 500);
+        assert_eq!(m.end_ms, None);
+    }
+
+    #[test]
+    fn range_total_mix_closed_and_running() {
+        let conn = setup();
+        begin_interval(&conn, 1000).unwrap();
+        end_interval(&conn, 2500).unwrap();
+        begin_interval(&conn, 4000).unwrap();
+        end_interval(&conn, 5000).unwrap();
+        begin_interval(&conn, 7000).unwrap();
+        let r = get_time_range_total(&conn, 0, 10_000).unwrap();
+        assert_eq!(r.total_ms, 2500);
+        let m = r.most_recent.unwrap();
+        assert_eq!(m.start_ms, 7000);
+        assert_eq!(m.end_ms, None);
     }
 }
