@@ -3,7 +3,7 @@
   import RangeTotal from "$lib/components/range-total.svelte";
   import { now } from "$lib/now.svelte";
   import { formatElapsed } from "$lib/utils";
-  import { invoke } from "@tauri-apps/api/core";
+  import { commands } from "$lib/bindings";
 
   let startMs = $state<number | null>(null);
   let lastDurationMs = $state<number | null>(null);
@@ -23,27 +23,33 @@
 
   $effect(() => {
     (async () => {
-      try {
-        startMs = await invoke<number | null>("get_current_interval");
-      } catch (e) {
-        error = String(e);
+      const result = await commands.getCurrentInterval();
+      if (result.status === "ok") {
+        startMs = result.data;
+      } else {
+        error = result.error;
       }
     })();
   });
 
   async function toggle() {
     error = null;
-    try {
-      if (running) {
-        const duration = now() - startMs!;
-        await invoke("end_interval");
+    if (running) {
+      const duration = now() - startMs!;
+      const result = await commands.endInterval();
+      if (result.status === "ok") {
         startMs = null;
         lastDurationMs = duration;
       } else {
-        startMs = await invoke<number>("begin_interval");
+        error = result.error;
       }
-    } catch (e) {
-      error = String(e);
+    } else {
+      const result = await commands.beginInterval();
+      if (result.status === "ok") {
+        startMs = result.data;
+      } else {
+        error = result.error;
+      }
     }
   }
 </script>

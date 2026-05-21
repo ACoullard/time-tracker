@@ -1,10 +1,7 @@
 <script lang="ts">
   import { now } from "$lib/now.svelte";
   import { formatElapsed } from "$lib/utils";
-  import { invoke } from "@tauri-apps/api/core";
-
-  type Interval = { id: number; start_ms: number; end_ms: number | null };
-  type RangeTotalData = { total_ms: number; most_recent: Interval | null };
+  import { commands, type RangeTotal } from "$lib/bindings";
 
   type Props = {
     fromMs: number;
@@ -15,7 +12,7 @@
 
   let { fromMs, toMs, isRunning, label = "Today" }: Props = $props();
 
-  let range_total = $state<RangeTotalData>({ total_ms: 0, most_recent: null });
+  let range_total = $state<RangeTotal>({ total_ms: 0, most_recent: null });
   let error = $state<string | null>(null);
 
   $effect(() => {
@@ -23,10 +20,11 @@
     toMs;
     isRunning;
     (async () => {
-      try {
-        range_total = await invoke<RangeTotalData>("get_range_total", { fromMs, toMs });
-      } catch (e) {
-        error = String(e);
+      const result = await commands.getRangeTotal(fromMs, toMs);
+      if (result.status === "ok") {
+        range_total = result.data;
+      } else {
+        error = result.error;
       }
     })();
   });

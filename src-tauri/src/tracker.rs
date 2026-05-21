@@ -3,14 +3,14 @@ use serde::{Deserialize, Serialize};
 
 pub const SCHEMA: &str = include_str!("../schema.sql");
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct Interval {
     pub id: i64,
     pub start_ms: i64,
     pub end_ms: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct RangeTotal {
     pub total_ms: i64,
     pub most_recent: Option<Interval>,
