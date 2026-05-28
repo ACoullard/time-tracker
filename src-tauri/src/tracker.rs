@@ -10,6 +10,29 @@ pub struct Interval {
     pub end_ms: Option<i64>,
 }
 
+impl Interval {
+    pub fn is_running(&self) -> bool {
+        self.end_ms.is_none()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TimerState {
+    Empty,
+    Running { start_ms: i64 },
+    Paused { last_duration_ms: i64 },
+}
+
+pub fn timer_state(conn: &Connection) -> rusqlite::Result<TimerState> {
+    Ok(match get_most_recent_interval(conn)? {
+        None => TimerState::Empty,
+        Some(i) if i.is_running() => TimerState::Running { start_ms: i.start_ms },
+        Some(i) => TimerState::Paused {
+            last_duration_ms: i.end_ms.unwrap() - i.start_ms,
+        },
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct RangeTotal {
     pub total_ms: i64,
@@ -45,17 +68,8 @@ pub fn init_schema(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(SCHEMA)
 }
 
-pub fn get_current_interval(conn: &Connection) -> rusqlite::Result<Option<i64>> {
-    conn.query_row(
-        "SELECT start_ms FROM intervals WHERE end_ms IS NULL ORDER BY start_ms DESC LIMIT 1",
-        [],
-        |row| row.get(0),
-    )
-    .optional()
-}
-
 pub fn begin_interval(conn: &Connection, now_ms: i64) -> Result<i64, DbError> {
-    if get_current_interval(conn)?.is_some() {
+    if matches!(timer_state(conn)?, TimerState::Running { .. }) {
         return Err(DbError::AlreadyRunning);
     }
     conn.execute(
@@ -159,16 +173,18 @@ mod tests {
     }
 
     #[test]
-    fn current_is_none_when_idle() {
+    fn most_recent_is_none_when_idle() {
         let conn = setup();
-        assert_eq!(get_current_interval(&conn).unwrap(), None);
+        assert_eq!(get_most_recent_interval(&conn).unwrap(), None);
     }
 
     #[test]
     fn begin_creates_running_interval() {
         let conn = setup();
         begin_interval(&conn, 1000).unwrap();
-        assert_eq!(get_current_interval(&conn).unwrap(), Some(1000));
+        let i = get_most_recent_interval(&conn).unwrap().unwrap();
+        assert!(i.is_running());
+        assert_eq!(i.start_ms, 1000);
     }
 
     #[test]
@@ -186,10 +202,11 @@ mod tests {
         let conn = setup();
         begin_interval(&conn, 1000).unwrap();
         end_interval(&conn, 5000).unwrap();
-        assert_eq!(get_current_interval(&conn).unwrap(), None);
+        let i = get_most_recent_interval(&conn).unwrap().unwrap();
+        assert!(!i.is_running());
+        assert_eq!(i.end_ms, Some(5000));
         let intervals = get_intervals(&conn, 0, 10_000).unwrap();
         assert_eq!(intervals.len(), 1);
-        assert_eq!(intervals[0].end_ms, Some(5000));
     }
 
     #[test]

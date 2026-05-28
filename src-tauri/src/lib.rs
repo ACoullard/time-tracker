@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
 use tauri_specta::Event;
 
-use tracker::{init_schema, Interval, RangeTotal};
+use tracker::{init_schema, Interval, RangeTotal, TimerState};
 
 pub struct AppState {
     db: Mutex<Connection>,
@@ -72,13 +72,13 @@ pub fn do_begin(app: &AppHandle<Wry>) -> CmdResult<i64> {
 pub fn do_end(app: &AppHandle<Wry>) -> CmdResult<()> {
     let state = app.state::<AppState>();
     let conn = state.db.lock().unwrap();
-    let Some(start) = tracker::get_current_interval(&conn)? else {
+    let TimerState::Running { start_ms } = tracker::timer_state(&conn)? else {
         return Err(CmdError::from("no interval running"));
     };
     let end = now_ms();
     tracker::end_interval(&conn, end)?;
     drop(conn);
-    let duration = end - start;
+    let duration = end - start_ms;
     tray::on_stopped(app, duration);
     let _ = IntervalChanged {
         running_start_ms: None,
@@ -91,7 +91,10 @@ pub fn do_end(app: &AppHandle<Wry>) -> CmdResult<()> {
 #[specta::specta]
 fn get_current_interval(state: State<AppState>) -> CmdResult<Option<i64>> {
     let conn = state.db.lock().unwrap();
-    Ok(tracker::get_current_interval(&conn)?)
+    Ok(match tracker::timer_state(&conn)? {
+        TimerState::Running { start_ms } => Some(start_ms),
+        _ => None,
+    })
 }
 
 #[tauri::command]
@@ -152,21 +155,13 @@ pub fn run() {
             let conn = Connection::open(dir.join("time-tracker.db"))?;
             init_schema(&conn)?;
 
-            let initial_running = tracker::get_current_interval(&conn).ok().flatten();
-            let initial_last_ms = if initial_running.is_none() {
-                tracker::get_most_recent_interval(&conn)
-                    .ok()
-                    .flatten()
-                    .and_then(|i| i.end_ms.map(|end| end - i.start_ms))
-            } else {
-                None
-            };
+            let initial = tracker::timer_state(&conn).unwrap_or(TimerState::Empty);
 
             app.manage(AppState {
                 db: Mutex::new(conn),
             });
 
-            tray::setup(app, initial_running, initial_last_ms)?;
+            tray::setup(app, initial)?;
             Ok(())
         })
         .run(tauri::generate_context!())

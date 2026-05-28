@@ -5,16 +5,12 @@ use tauri::{
     AppHandle, Manager, Wry,
 };
 
+use crate::tracker::TimerState;
+
 pub struct TrayState {
     tray: tauri::tray::TrayIcon<Wry>,
     toggle_item: MenuItem<Wry>,
-    running_start_ms: Mutex<Option<i64>>,
-    last_duration_ms: Mutex<Option<i64>>,
-}
-
-struct TrayStatus {
-    running: bool,
-    elapsed_ms: i64,
+    timer: Mutex<TimerState>,
 }
 
 fn now_ms() -> i64 {
@@ -36,17 +32,14 @@ fn format_hms(ms: i64) -> String {
     }
 }
 
-pub fn setup(
-    app: &tauri::App<Wry>,
-    initial_running: Option<i64>,
-    initial_last_ms: Option<i64>,
-) -> tauri::Result<()> {
+pub fn setup(app: &tauri::App<Wry>, initial: TimerState) -> tauri::Result<()> {
     let handle = app.handle().clone();
+    let running = matches!(initial, TimerState::Running { .. });
 
     let toggle = MenuItem::with_id(
         app,
         "tray:toggle",
-        if initial_running.is_some() { "Stop" } else { "Start" },
+        if running { "Stop" } else { "Start" },
         true,
         None::<&str>,
     )?;
@@ -85,8 +78,7 @@ pub fn setup(
     app.manage(TrayState {
         tray,
         toggle_item: toggle,
-        running_start_ms: Mutex::new(initial_running),
-        last_duration_ms: Mutex::new(initial_last_ms),
+        timer: Mutex::new(initial),
     });
 
     refresh(&handle);
@@ -96,7 +88,7 @@ pub fn setup(
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             let state = tick_handle.state::<TrayState>();
-            let running = state.running_start_ms.lock().unwrap().is_some();
+            let running = matches!(*state.timer.lock().unwrap(), TimerState::Running { .. });
             drop(state);
             if running {
                 refresh(&tick_handle);
@@ -109,7 +101,7 @@ pub fn setup(
 
 pub fn on_started(app: &AppHandle<Wry>, start_ms: i64) {
     let state = app.state::<TrayState>();
-    *state.running_start_ms.lock().unwrap() = Some(start_ms);
+    *state.timer.lock().unwrap() = TimerState::Running { start_ms };
     let _ = state.toggle_item.set_text("Stop");
     drop(state);
     refresh(app);
@@ -117,8 +109,9 @@ pub fn on_started(app: &AppHandle<Wry>, start_ms: i64) {
 
 pub fn on_stopped(app: &AppHandle<Wry>, duration_ms: i64) {
     let state = app.state::<TrayState>();
-    *state.running_start_ms.lock().unwrap() = None;
-    *state.last_duration_ms.lock().unwrap() = Some(duration_ms);
+    *state.timer.lock().unwrap() = TimerState::Paused {
+        last_duration_ms: duration_ms,
+    };
     let _ = state.toggle_item.set_text("Start");
     drop(state);
     refresh(app);
@@ -126,70 +119,73 @@ pub fn on_stopped(app: &AppHandle<Wry>, duration_ms: i64) {
 
 fn refresh(app: &AppHandle<Wry>) {
     let state = app.state::<TrayState>();
-    let start = *state.running_start_ms.lock().unwrap();
-    let last = *state.last_duration_ms.lock().unwrap();
-    let status = match start {
-        Some(s) => TrayStatus { running: true, elapsed_ms: now_ms() - s },
-        None => TrayStatus { running: false, elapsed_ms: last.unwrap_or(0) },
-    };
-    apply(&state, &status);
+    let timer = *state.timer.lock().unwrap();
+    apply(&state, timer);
 }
 
 #[cfg(target_os = "macos")]
-fn apply(state: &TrayState, status: &TrayStatus) {
-    let elapsed = format_hms(status.elapsed_ms);
-    if status.running {
-        let _ = state.tray.set_title(Some(&elapsed));
-        let _ = state.tray.set_tooltip(Some(&format!("Running — {elapsed}")));
-    } else {
-        let _ = state.tray.set_title(None::<&str>);
-        let tip = if status.elapsed_ms > 0 {
-            format!("Paused — last {elapsed}")
-        } else {
-            "Paused".to_string()
-        };
-        let _ = state.tray.set_tooltip(Some(&tip));
+fn apply(state: &TrayState, timer: TimerState) {
+    match timer {
+        TimerState::Running { start_ms } => {
+            let elapsed = format_hms(now_ms() - start_ms);
+            let _ = state.tray.set_title(Some(&elapsed));
+            let _ = state.tray.set_tooltip(Some(&format!("Running — {elapsed}")));
+        }
+        TimerState::Paused { last_duration_ms } => {
+            let _ = state.tray.set_title(None::<&str>);
+            let _ = state.tray.set_tooltip(Some(&format!(
+                "Paused — last {}",
+                format_hms(last_duration_ms)
+            )));
+        }
+        TimerState::Empty => {
+            let _ = state.tray.set_title(None::<&str>);
+            let _ = state.tray.set_tooltip(Some("Paused"));
+        }
     }
 }
 
 #[cfg(target_os = "windows")]
-fn apply(state: &TrayState, status: &TrayStatus) {
-    let elapsed = format_hms(status.elapsed_ms);
-    let tip = if status.running {
-        format!("Running — {elapsed}")
-    } else if status.elapsed_ms > 0 {
-        format!("Paused — last {elapsed}")
-    } else {
-        "Paused".to_string()
+fn apply(state: &TrayState, timer: TimerState) {
+    let tip = match timer {
+        TimerState::Running { start_ms } => format!("Running — {}", format_hms(now_ms() - start_ms)),
+        TimerState::Paused { last_duration_ms } => {
+            format!("Paused — last {}", format_hms(last_duration_ms))
+        }
+        TimerState::Empty => "Paused".to_string(),
     };
     let _ = state.tray.set_tooltip(Some(&tip));
 }
 
 #[cfg(target_os = "linux")]
-fn apply(state: &TrayState, status: &TrayStatus) {
-    let elapsed = format_hms(status.elapsed_ms);
-    let tip = if status.running {
-        format!("Running — {elapsed}")
-    } else if status.elapsed_ms > 0 {
-        format!("Paused — last {elapsed}")
-    } else {
-        "Paused".to_string()
-    };
-    let _ = state.tray.set_tooltip(Some(&tip));
-    let _ = state
-        .tray
-        .set_title(if status.running { Some(elapsed.as_str()) } else { None });
+fn apply(state: &TrayState, timer: TimerState) {
+    match timer {
+        TimerState::Running { start_ms } => {
+            let elapsed = format_hms(now_ms() - start_ms);
+            let _ = state.tray.set_tooltip(Some(&format!("Running — {elapsed}")));
+            let _ = state.tray.set_title(Some(elapsed.as_str()));
+        }
+        TimerState::Paused { last_duration_ms } => {
+            let _ = state.tray.set_tooltip(Some(&format!(
+                "Paused — last {}",
+                format_hms(last_duration_ms)
+            )));
+            let _ = state.tray.set_title(None::<&str>);
+        }
+        TimerState::Empty => {
+            let _ = state.tray.set_tooltip(Some("Paused"));
+            let _ = state.tray.set_title(None::<&str>);
+        }
+    }
 }
 
 fn handle_menu(app: &AppHandle<Wry>, event: MenuEvent) {
     match event.id().as_ref() {
         "tray:toggle" => {
-            let running = app
-                .state::<TrayState>()
-                .running_start_ms
-                .lock()
-                .unwrap()
-                .is_some();
+            let running = matches!(
+                *app.state::<TrayState>().timer.lock().unwrap(),
+                TimerState::Running { .. }
+            );
             if running {
                 let _ = crate::do_end(app);
             } else {
