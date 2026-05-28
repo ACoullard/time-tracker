@@ -3,7 +3,7 @@
   import RangeTotal from "$lib/components/range-total.svelte";
   import { now } from "$lib/now.svelte";
   import { formatElapsed } from "$lib/utils";
-  import { commands } from "$lib/bindings";
+  import { commands, events } from "$lib/bindings";
 
   let startMs = $state<number | null>(null);
   let lastDurationMs = $state<number | null>(null);
@@ -30,6 +30,19 @@
         error = result.error;
       }
     })();
+  });
+
+  $effect(() => {
+    const unsub = events.intervalChanged.listen((evt) => {
+      const newStart = evt.payload.running_start_ms;
+      if (newStart === null && startMs !== null) {
+        lastDurationMs = Date.now() - startMs;
+      }
+      startMs = newStart;
+    });
+    return () => {
+      unsub.then((fn) => fn());
+    };
   });
 
   async function toggle() {

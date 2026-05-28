@@ -113,6 +113,21 @@ pub fn get_time_range_total(
     })
 }
 
+pub fn get_most_recent_interval(conn: &Connection) -> rusqlite::Result<Option<Interval>> {
+    conn.query_row(
+        "SELECT id, start_ms, end_ms FROM intervals ORDER BY start_ms DESC LIMIT 1",
+        [],
+        |row| {
+            Ok(Interval {
+                id: row.get(0)?,
+                start_ms: row.get(1)?,
+                end_ms: row.get(2)?,
+            })
+        },
+    )
+    .optional()
+}
+
 pub fn get_intervals(
     conn: &Connection,
     from_ms: i64,
