@@ -195,7 +195,12 @@ fn handle_menu(app: &AppHandle<Wry>, event: MenuEvent) {
         "tray:show_hide" => {
             let _ = toggle_window(app);
         }
-        "tray:quit" => app.exit(0),
+        "tray:quit" => {
+            for (_, window) in app.webview_windows() {
+                let _ = window.destroy();
+            }
+            app.exit(0);
+        }
         _ => {}
     }
 }
