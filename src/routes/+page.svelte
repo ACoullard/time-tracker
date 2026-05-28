@@ -23,9 +23,14 @@
 
   $effect(() => {
     (async () => {
-      const result = await commands.getCurrentInterval();
+      const result = await commands.getTimerState();
       if (result.status === "ok") {
-        startMs = result.data;
+        const s = result.data;
+        if (s.state === "Running") {
+          startMs = s.start_ms;
+        } else if (s.state === "Paused") {
+          lastDurationMs = s.last_duration_ms;
+        }
       } else {
         error = result.error;
       }

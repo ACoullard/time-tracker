@@ -16,7 +16,8 @@ impl Interval {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "state")]
 pub enum TimerState {
     Empty,
     Running { start_ms: i64 },

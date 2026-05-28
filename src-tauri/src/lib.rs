@@ -89,12 +89,9 @@ pub fn do_end(app: &AppHandle<Wry>) -> CmdResult<()> {
 
 #[tauri::command]
 #[specta::specta]
-fn get_current_interval(state: State<AppState>) -> CmdResult<Option<i64>> {
+fn get_timer_state(state: State<AppState>) -> CmdResult<TimerState> {
     let conn = state.db.lock().unwrap();
-    Ok(match tracker::timer_state(&conn)? {
-        TimerState::Running { start_ms } => Some(start_ms),
-        _ => None,
-    })
+    Ok(tracker::timer_state(&conn)?)
 }
 
 #[tauri::command]
@@ -127,7 +124,7 @@ fn get_range_total(state: State<AppState>, from_ms: i64, to_ms: i64) -> CmdResul
 pub fn run() {
     let builder = tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
-            get_current_interval,
+            get_timer_state,
             begin_interval,
             end_interval,
             get_intervals,
