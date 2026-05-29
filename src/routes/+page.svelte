@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Button } from "$lib/components/ui/button";
   import RangeTotal from "$lib/components/range-total.svelte";
-  import { now } from "$lib/now.svelte";
+  import { now, bumpNow } from "$lib/now.svelte";
   import { formatElapsed } from "$lib/utils";
   import { commands, events } from "$lib/bindings";
 
@@ -44,6 +44,7 @@
         lastDurationMs = Date.now() - startMs;
       }
       startMs = newStart;
+      bumpNow();
     });
     return () => {
       unsub.then((fn) => fn());
