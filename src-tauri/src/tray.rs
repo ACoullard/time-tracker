@@ -89,7 +89,6 @@ pub fn setup(app: &tauri::App<Wry>, initial: TimerState) -> tauri::Result<()> {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             let state = tick_handle.state::<TrayState>();
             let running = matches!(*state.timer.lock().unwrap(), TimerState::Running { .. });
-            drop(state);
             if running {
                 refresh(&tick_handle);
             }
@@ -103,7 +102,6 @@ pub fn on_started(app: &AppHandle<Wry>, start_ms: i64) {
     let state = app.state::<TrayState>();
     *state.timer.lock().unwrap() = TimerState::Running { start_ms };
     let _ = state.toggle_item.set_text("Stop");
-    drop(state);
     refresh(app);
 }
 
@@ -113,7 +111,6 @@ pub fn on_stopped(app: &AppHandle<Wry>, duration_ms: i64) {
         last_duration_ms: duration_ms,
     };
     let _ = state.toggle_item.set_text("Start");
-    drop(state);
     refresh(app);
 }
 

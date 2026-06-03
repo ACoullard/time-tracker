@@ -117,7 +117,7 @@ pub fn get_time_range_total(
         }
         if most_recent
             .as_ref()
-            .map_or(true, |m| interval.start_ms > m.start_ms)
+            .is_none_or(|m| interval.start_ms > m.start_ms)
         {
             most_recent = Some(interval);
         }
