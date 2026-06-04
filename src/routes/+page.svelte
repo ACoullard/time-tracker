@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button } from "$lib/components/ui/button";
-  import RangeTotal from "$lib/components/range-total.svelte";
+  import GoalRing from "$lib/components/goal-ring.svelte";
   import { now, bumpNow } from "$lib/now.svelte";
   import { formatElapsed } from "$lib/utils";
   import { commands, events } from "$lib/bindings";
@@ -103,20 +103,20 @@
 <main class="p-8 max-w-md mx-auto">
   <h1 class="text-2xl font-semibold mb-6">Time Tracker</h1>
 
+  <div class="flex justify-center mb-6">
+    <GoalRing
+      fromMs={todayFromMs}
+      toMs={todayToMs}
+      isRunning={running}
+      goalMs={goalMs}
+    />
+  </div>
+
   <p class="text-5xl font-mono tabular-nums mb-6">{formatElapsed(displayMs)}</p>
 
   <Button onclick={toggle} class="w-full">
     {running ? "Stop" : "Start"}
   </Button>
-
-  <div class="mt-6">
-    <RangeTotal
-      fromMs={todayFromMs}
-      toMs={todayToMs}
-      isRunning={running}
-      label="Today"
-    />
-  </div>
 
   <div class="mt-4 flex items-baseline justify-between">
     <span class="text-sm text-muted-foreground">Daily goal</span>
