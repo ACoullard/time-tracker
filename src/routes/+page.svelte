@@ -9,6 +9,10 @@
   let lastDurationMs = $state<number | null>(null);
   let error = $state<string | null>(null);
 
+  let goalMs = $state<number | null>(null);
+  let editingGoal = $state(false);
+  let goalInput = $state("");
+
   let running = $derived(startMs !== null);
   let displayMs = $derived(
     startMs !== null ? now() - startMs : (lastDurationMs ?? 0),
@@ -33,6 +37,11 @@
         }
       } else {
         error = result.error;
+      }
+
+      const gr = await commands.getCurrentGoal();
+      if (gr.status === "ok") {
+        goalMs = gr.data?.goal_ms ?? null;
       }
     })();
   });
@@ -71,6 +80,24 @@
       }
     }
   }
+
+  async function saveGoal() {
+    const mins = parseFloat(goalInput);
+    if (isNaN(mins) || mins <= 0) return;
+    const ms = Math.round(mins * 60_000);
+    const result = await commands.setDailyGoal(ms);
+    if (result.status === "ok") {
+      goalMs = ms;
+      editingGoal = false;
+    } else {
+      error = result.error;
+    }
+  }
+
+  function startEditingGoal() {
+    goalInput = goalMs !== null ? String(Math.round(goalMs / 60_000)) : "";
+    editingGoal = true;
+  }
 </script>
 
 <main class="p-8 max-w-md mx-auto">
@@ -89,6 +116,33 @@
       isRunning={running}
       label="Today"
     />
+  </div>
+
+  <div class="mt-4 flex items-baseline justify-between">
+    <span class="text-sm text-muted-foreground">Daily goal</span>
+    {#if editingGoal}
+      <form
+        onsubmit={(e) => { e.preventDefault(); saveGoal(); }}
+        class="flex gap-2 items-center"
+      >
+        <input
+          type="number"
+          min="1"
+          placeholder="minutes"
+          bind:value={goalInput}
+          class="w-24 text-right font-mono border rounded px-2 py-0.5 text-sm"
+        />
+        <Button type="submit" size="xs">Save</Button>
+        <Button size="xs" variant="ghost" onclick={() => (editingGoal = false)}>Cancel</Button>
+      </form>
+    {:else}
+      <button
+        onclick={startEditingGoal}
+        class="text-sm font-mono tabular-nums text-right hover:underline"
+      >
+        {goalMs !== null ? formatElapsed(goalMs) : "— Set goal"}
+      </button>
+    {/if}
   </div>
 
   {#if error}

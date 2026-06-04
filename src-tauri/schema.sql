@@ -8,3 +8,9 @@ CREATE TABLE IF NOT EXISTS intervals (
 );
 
 CREATE INDEX IF NOT EXISTS idx_intervals_start ON intervals(start_ms);
+
+CREATE TABLE IF NOT EXISTS daily_goals (
+    id      INTEGER PRIMARY KEY,
+    day     TEXT NOT NULL UNIQUE,   -- 'YYYY-MM-DD' local calendar date
+    goal_ms INTEGER NOT NULL
+);

@@ -35,6 +35,12 @@ pub fn timer_state(conn: &Connection) -> rusqlite::Result<TimerState> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct DailyGoal {
+    pub day: String,
+    pub goal_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct RangeTotal {
     pub total_ms: i64,
     pub most_recent: Option<Interval>,
@@ -141,6 +147,24 @@ pub fn get_most_recent_interval(conn: &Connection) -> rusqlite::Result<Option<In
         },
     )
     .optional()
+}
+
+pub fn get_current_goal(conn: &Connection) -> rusqlite::Result<Option<DailyGoal>> {
+    conn.query_row(
+        "SELECT day, goal_ms FROM daily_goals ORDER BY day DESC LIMIT 1",
+        [],
+        |row| Ok(DailyGoal { day: row.get(0)?, goal_ms: row.get(1)? }),
+    )
+    .optional()
+}
+
+pub fn set_daily_goal(conn: &Connection, day: &str, goal_ms: i64) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO daily_goals (day, goal_ms) VALUES (?1, ?2)
+         ON CONFLICT(day) DO UPDATE SET goal_ms = excluded.goal_ms",
+        params![day, goal_ms],
+    )?;
+    Ok(())
 }
 
 pub fn get_intervals(
@@ -327,6 +351,44 @@ mod tests {
         let m = r.most_recent.unwrap();
         assert_eq!(m.start_ms, 500);
         assert_eq!(m.end_ms, None);
+    }
+
+    #[test]
+    fn goal_none_on_empty_table() {
+        let conn = setup();
+        assert_eq!(get_current_goal(&conn).unwrap(), None);
+    }
+
+    #[test]
+    fn goal_insert_and_retrieve() {
+        let conn = setup();
+        set_daily_goal(&conn, "2024-01-15", 3_600_000).unwrap();
+        let g = get_current_goal(&conn).unwrap().unwrap();
+        assert_eq!(g.day, "2024-01-15");
+        assert_eq!(g.goal_ms, 3_600_000);
+    }
+
+    #[test]
+    fn goal_same_day_overwrites() {
+        let conn = setup();
+        set_daily_goal(&conn, "2024-01-15", 3_600_000).unwrap();
+        set_daily_goal(&conn, "2024-01-15", 7_200_000).unwrap();
+        let g = get_current_goal(&conn).unwrap().unwrap();
+        assert_eq!(g.goal_ms, 7_200_000);
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM daily_goals", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn goal_different_days_returns_most_recent() {
+        let conn = setup();
+        set_daily_goal(&conn, "2024-01-14", 3_600_000).unwrap();
+        set_daily_goal(&conn, "2024-01-15", 5_400_000).unwrap();
+        let g = get_current_goal(&conn).unwrap().unwrap();
+        assert_eq!(g.day, "2024-01-15");
+        assert_eq!(g.goal_ms, 5_400_000);
     }
 
     #[test]

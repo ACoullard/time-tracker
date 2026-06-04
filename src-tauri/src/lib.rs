@@ -3,12 +3,14 @@ mod tray;
 
 use std::sync::Mutex;
 
+use chrono::Local;
+
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
 use tauri_specta::Event;
 
-use tracker::{init_schema, Interval, RangeTotal, TimerState};
+use tracker::{init_schema, DailyGoal, Interval, RangeTotal, TimerState};
 
 pub struct AppState {
     db: Mutex<Connection>,
@@ -120,6 +122,21 @@ fn get_range_total(state: State<AppState>, from_ms: i64, to_ms: i64) -> CmdResul
     Ok(tracker::get_time_range_total(&conn, from_ms, to_ms)?)
 }
 
+#[tauri::command]
+#[specta::specta]
+fn get_current_goal(state: State<AppState>) -> CmdResult<Option<DailyGoal>> {
+    let conn = state.db.lock().unwrap();
+    Ok(tracker::get_current_goal(&conn)?)
+}
+
+#[tauri::command]
+#[specta::specta]
+fn set_daily_goal(state: State<AppState>, goal_ms: i64) -> CmdResult<()> {
+    let day = Local::now().format("%Y-%m-%d").to_string();
+    let conn = state.db.lock().unwrap();
+    Ok(tracker::set_daily_goal(&conn, &day, goal_ms)?)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri_specta::Builder::<tauri::Wry>::new()
@@ -129,6 +146,8 @@ pub fn run() {
             end_interval,
             get_intervals,
             get_range_total,
+            get_current_goal,
+            set_daily_goal,
         ])
         .events(tauri_specta::collect_events![IntervalChanged]);
 
