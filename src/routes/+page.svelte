@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Button } from "$lib/components/ui/button";
   import GoalRing from "$lib/components/goal-ring.svelte";
+  import IntervalsPanel from "$lib/components/intervals-panel.svelte";
   import TimeInput from "$lib/components/time-input.svelte";
   import { Time } from "@internationalized/date";
   import { now, bumpNow } from "$lib/now.svelte";
@@ -129,4 +130,6 @@
   {#if error}
     <p class="text-sm text-destructive mt-4">{error}</p>
   {/if}
+
+  <IntervalsPanel fromMs={todayFromMs} toMs={todayToMs} label="Today's intervals" />
 </main>

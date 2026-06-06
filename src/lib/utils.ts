@@ -19,3 +19,11 @@ export function formatElapsed(ms: number): string {
 	const s = total % 60;
 	return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
+
+export function formatTime(ms: number): string {
+	return new Date(ms).toLocaleTimeString(undefined, {
+		hour: "numeric",
+		minute: "2-digit",
+		hour12: true,
+	});
+}
