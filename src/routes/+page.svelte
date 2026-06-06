@@ -1,6 +1,8 @@
 <script lang="ts">
   import { Button } from "$lib/components/ui/button";
   import GoalRing from "$lib/components/goal-ring.svelte";
+  import TimeInput from "$lib/components/time-input.svelte";
+  import { Time } from "@internationalized/date";
   import { now, bumpNow } from "$lib/now.svelte";
   import { formatElapsed } from "$lib/utils";
   import { commands, events } from "$lib/bindings";
@@ -10,8 +12,7 @@
   let error = $state<string | null>(null);
 
   let goalMs = $state<number | null>(null);
-  let editingGoal = $state(false);
-  let goalInput = $state("");
+  let goalTime = $state<Time | undefined>(undefined);
 
   let running = $derived(startMs !== null);
   let displayMs = $derived(
@@ -42,6 +43,10 @@
       const gr = await commands.getCurrentGoal();
       if (gr.status === "ok") {
         goalMs = gr.data?.goal_ms ?? null;
+        if (goalMs !== null) {
+          const totalMins = Math.round(goalMs / 60_000);
+          goalTime = new Time(Math.floor(totalMins / 60), totalMins % 60);
+        }
       }
     })();
   });
@@ -82,21 +87,15 @@
   }
 
   async function saveGoal() {
-    const mins = parseFloat(goalInput);
-    if (isNaN(mins) || mins <= 0) return;
-    const ms = Math.round(mins * 60_000);
+    if (!goalTime) return;
+    const ms = (goalTime.hour * 60 + goalTime.minute) * 60_000;
+    if (ms <= 0) return;
     const result = await commands.setDailyGoal(ms);
     if (result.status === "ok") {
       goalMs = ms;
-      editingGoal = false;
     } else {
       error = result.error;
     }
-  }
-
-  function startEditingGoal() {
-    goalInput = goalMs !== null ? String(Math.round(goalMs / 60_000)) : "";
-    editingGoal = true;
   }
 </script>
 
@@ -120,29 +119,11 @@
 
   <div class="mt-4 flex items-baseline justify-between">
     <span class="text-sm text-muted-foreground">Daily goal</span>
-    {#if editingGoal}
-      <form
-        onsubmit={(e) => { e.preventDefault(); saveGoal(); }}
-        class="flex gap-2 items-center"
-      >
-        <input
-          type="number"
-          min="1"
-          placeholder="minutes"
-          bind:value={goalInput}
-          class="w-24 text-right font-mono border rounded px-2 py-0.5 text-sm"
-        />
-        <Button type="submit" size="xs">Save</Button>
-        <Button size="xs" variant="ghost" onclick={() => (editingGoal = false)}>Cancel</Button>
-      </form>
-    {:else}
-      <button
-        onclick={startEditingGoal}
-        class="text-sm font-mono tabular-nums text-right hover:underline"
-      >
-        {goalMs !== null ? formatElapsed(goalMs) : "— Set goal"}
-      </button>
-    {/if}
+    <div onfocusout={(e) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node)) saveGoal();
+    }}>
+      <TimeInput bind:value={goalTime} showPeriod={false} />
+    </div>
   </div>
 
   {#if error}
