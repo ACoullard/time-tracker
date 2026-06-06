@@ -100,36 +100,40 @@
   }
 </script>
 
-<main class="p-8 max-w-md mx-auto">
-  <h1 class="text-2xl font-semibold mb-6">Time Tracker</h1>
+<main class="p-8 flex gap-20 max-w-3xl mx-auto">
+  <div class="flex-none w-64">
+    <h1 class="text-2xl font-semibold mb-6">Time Tracker</h1>
 
-  <div class="flex justify-center mb-6">
-    <GoalRing
-      fromMs={todayFromMs}
-      toMs={todayToMs}
-      isRunning={running}
-      goalMs={goalMs}
-    />
-  </div>
-
-  <p class="text-5xl font-mono tabular-nums mb-6">{formatElapsed(displayMs)}</p>
-
-  <Button onclick={toggle} class="w-full">
-    {running ? "Stop" : "Start"}
-  </Button>
-
-  <div class="mt-4 flex items-baseline justify-between">
-    <span class="text-sm text-muted-foreground">Daily goal</span>
-    <div onfocusout={(e) => {
-      if (!e.currentTarget.contains(e.relatedTarget as Node)) saveGoal();
-    }}>
-      <TimeInput bind:value={goalTime} showPeriod={false} />
+    <div class="flex justify-center mb-6">
+      <GoalRing
+        fromMs={todayFromMs}
+        toMs={todayToMs}
+        isRunning={running}
+        goalMs={goalMs}
+      />
     </div>
+
+    <p class="text-5xl font-mono tabular-nums mb-6">{formatElapsed(displayMs)}</p>
+
+    <Button onclick={toggle} class="w-full">
+      {running ? "Stop" : "Start"}
+    </Button>
+
+    <div class="mt-4 flex items-baseline justify-between">
+      <span class="text-sm text-muted-foreground">Daily goal</span>
+      <div onfocusout={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) saveGoal();
+      }}>
+        <TimeInput bind:value={goalTime} showPeriod={false} />
+      </div>
+    </div>
+
+    {#if error}
+      <p class="text-sm text-destructive mt-4">{error}</p>
+    {/if}
   </div>
 
-  {#if error}
-    <p class="text-sm text-destructive mt-4">{error}</p>
-  {/if}
-
-  <IntervalsPanel fromMs={todayFromMs} toMs={todayToMs} label="Today's intervals" />
+  <div class="flex-1 min-w-0">
+    <IntervalsPanel fromMs={todayFromMs} toMs={todayToMs} label="Today's intervals" />
+  </div>
 </main>

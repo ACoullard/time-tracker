@@ -50,6 +50,7 @@ pub struct RangeTotal {
 pub enum DbError {
     AlreadyRunning,
     NoneRunning,
+    NotFound,
     Sqlite(rusqlite::Error),
 }
 
@@ -58,6 +59,7 @@ impl std::fmt::Display for DbError {
         match self {
             Self::AlreadyRunning => write!(f, "an interval is already running"),
             Self::NoneRunning => write!(f, "no interval is running"),
+            Self::NotFound => write!(f, "interval not found"),
             Self::Sqlite(e) => write!(f, "sqlite error: {e}"),
         }
     }
@@ -93,6 +95,22 @@ pub fn end_interval(conn: &Connection, now_ms: i64) -> Result<(), DbError> {
     )?;
     if rows == 0 {
         return Err(DbError::NoneRunning);
+    }
+    Ok(())
+}
+
+pub fn update_interval(
+    conn: &Connection,
+    id: i64,
+    start_ms: i64,
+    end_ms: Option<i64>,
+) -> Result<(), DbError> {
+    let rows = conn.execute(
+        "UPDATE intervals SET start_ms = ?1, end_ms = ?2 WHERE id = ?3",
+        params![start_ms, end_ms, id],
+    )?;
+    if rows == 0 {
+        return Err(DbError::NotFound);
     }
     Ok(())
 }
@@ -351,6 +369,27 @@ mod tests {
         let m = r.most_recent.unwrap();
         assert_eq!(m.start_ms, 500);
         assert_eq!(m.end_ms, None);
+    }
+
+    #[test]
+    fn update_interval_changes_times() {
+        let conn = setup();
+        begin_interval(&conn, 1000).unwrap();
+        end_interval(&conn, 5000).unwrap();
+        let original = get_most_recent_interval(&conn).unwrap().unwrap();
+        update_interval(&conn, original.id, 2000, Some(6000)).unwrap();
+        let updated = get_most_recent_interval(&conn).unwrap().unwrap();
+        assert_eq!(updated.start_ms, 2000);
+        assert_eq!(updated.end_ms, Some(6000));
+    }
+
+    #[test]
+    fn update_interval_not_found_errors() {
+        let conn = setup();
+        assert!(matches!(
+            update_interval(&conn, 999, 1000, Some(2000)),
+            Err(DbError::NotFound)
+        ));
     }
 
     #[test]

@@ -8,12 +8,14 @@
     label,
     showPeriod = true,
     disabled = false,
+    variant = "default",
   }: {
     value?: Time | undefined;
     onchange?: (v: Time | undefined) => void;
     label?: string;
     showPeriod?: boolean;
     disabled?: boolean;
+    variant?: "default" | "ghost";
   } = $props();
 </script>
 
@@ -31,10 +33,12 @@
 
   <TimeField.Input
     onkeydown={(e) => { if (e.key === "Enter") (e.target as HTMLElement).blur(); }}
-    class="inline-flex items-center border border-input rounded-md bg-background
-           px-2 py-1 text-sm font-mono
+    class="inline-flex items-center rounded-md px-2 py-1 text-sm font-mono
            focus-within:ring-3 focus-within:ring-ring/30 focus-within:border-ring
-           transition-all disabled:opacity-50 disabled:pointer-events-none"
+           transition-all disabled:opacity-50 disabled:pointer-events-none
+           {variant === 'ghost'
+             ? 'border border-transparent bg-transparent hover:border-input/50 cursor-pointer'
+             : 'border border-input bg-background'}"
   >
     {#snippet children({ segments })}
       {#each segments as { part, value: segVal }}

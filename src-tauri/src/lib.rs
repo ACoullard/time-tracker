@@ -131,6 +131,21 @@ fn get_current_goal(state: State<AppState>) -> CmdResult<Option<DailyGoal>> {
 
 #[tauri::command]
 #[specta::specta]
+fn update_interval(app: AppHandle<Wry>, id: i64, start_ms: i64, end_ms: Option<i64>) -> CmdResult<()> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().unwrap();
+    tracker::update_interval(&conn, id, start_ms, end_ms)?;
+    let running_start = match tracker::timer_state(&conn)? {
+        TimerState::Running { start_ms: s } => Some(s),
+        _ => None,
+    };
+    drop(conn);
+    let _ = IntervalChanged { running_start_ms: running_start }.emit(&app);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 fn set_daily_goal(state: State<AppState>, goal_ms: i64) -> CmdResult<()> {
     let day = Local::now().format("%Y-%m-%d").to_string();
     let conn = state.db.lock().unwrap();
@@ -148,6 +163,7 @@ pub fn run() {
             get_range_total,
             get_current_goal,
             set_daily_goal,
+            update_interval,
         ])
         .events(tauri_specta::collect_events![IntervalChanged]);
 

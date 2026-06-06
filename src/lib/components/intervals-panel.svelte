@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { Time } from "@internationalized/date";
   import { now } from "$lib/now.svelte";
-  import { formatElapsed, formatTime } from "$lib/utils";
+  import { formatElapsed, msToTime, applyTimeToMs } from "$lib/utils";
   import { commands, events, type Interval } from "$lib/bindings";
+  import TimeInput from "$lib/components/time-input.svelte";
 
   type Props = {
     fromMs: number;
@@ -12,16 +14,33 @@
   let { fromMs, toMs, label = "Intervals" }: Props = $props();
 
   let intervals = $state<Interval[]>([]);
-  let loading = $state(true);
+  let initialized = $state(false);
   let error = $state<string | null>(null);
 
+  // Per-row editable copies, keyed by interval id
+  let editValues = $state(new Map<number, { startTime: Time; endTime: Time | undefined }>());
+
+  function initEditValues(ivs: Interval[]) {
+    const m = new Map<number, { startTime: Time; endTime: Time | undefined }>();
+    for (const iv of ivs) {
+      m.set(iv.id, {
+        startTime: msToTime(iv.start_ms),
+        endTime: iv.end_ms !== null ? msToTime(iv.end_ms) : undefined,
+      });
+    }
+    editValues = m;
+  }
+
   async function fetchIntervals() {
-    loading = true;
     error = null;
     const r = await commands.getIntervals(fromMs, toMs);
-    if (r.status === "ok") intervals = r.data;
-    else error = r.error;
-    loading = false;
+    if (r.status === "ok") {
+      intervals = r.data;
+      initEditValues(r.data);
+    } else {
+      error = r.error;
+    }
+    initialized = true;
   }
 
   $effect(() => {
@@ -33,6 +52,24 @@
     const unsub = events.intervalChanged.listen(() => fetchIntervals());
     return () => { unsub.then((fn) => fn()); };
   });
+
+  async function saveInterval(id: number) {
+    const interval = intervals.find((iv) => iv.id === id);
+    const ev = editValues.get(id);
+    if (!interval || !ev) return;
+
+    const newStartMs = applyTimeToMs(interval.start_ms, ev.startTime);
+    const newEndMs =
+      ev.endTime !== undefined && interval.end_ms !== null
+        ? applyTimeToMs(interval.end_ms, ev.endTime)
+        : interval.end_ms;
+
+    if (newEndMs !== null && newStartMs >= newEndMs) return;
+
+    const r = await commands.updateInterval(id, newStartMs, newEndMs);
+    if (r.status === "error") error = r.error;
+    // intervalChanged event fired by backend triggers fetchIntervals automatically
+  }
 
   let runningInterval = $derived(
     intervals.length > 0 && intervals.at(-1)!.end_ms === null
@@ -61,7 +98,7 @@
 <div class="mt-6">
   <div class="flex items-baseline justify-between mb-2">
     <span class="text-sm font-medium">{label}</span>
-    {#if !loading && !error}
+    {#if initialized && !error}
       <span class="text-xs text-muted-foreground">
         {intervals.length}
         {intervals.length === 1 ? "interval" : "intervals"}
@@ -69,7 +106,7 @@
     {/if}
   </div>
 
-  {#if loading}
+  {#if !initialized}
     <div class="space-y-1.5">
       {#each [0, 1, 2] as _}
         <div class="h-8 rounded-md bg-muted animate-pulse"></div>
@@ -83,36 +120,48 @@
     <div class="divide-y divide-border rounded-md border border-border overflow-hidden">
       {#each displayIntervals as interval (interval.id)}
         {@const isRunning = interval.end_ms === null}
+        {@const ev = editValues.get(interval.id)}
         {@const durationMs = isRunning
           ? Math.max(0, Math.min(now(), toMs) - Math.max(interval.start_ms, fromMs))
           : interval.end_ms! - interval.start_ms}
 
         <div
-          class="flex items-center gap-3 px-3 py-2 text-sm bg-card {isRunning
+          class="flex items-center gap-2 px-3 py-1.5 text-sm bg-card {isRunning
             ? 'bg-green-500/5'
             : ''}"
+          onfocusout={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) saveInterval(interval.id);
+          }}
         >
-          <span class="font-mono tabular-nums text-foreground w-20 shrink-0">
-            {formatTime(interval.start_ms)}
-          </span>
+          <TimeInput
+            value={ev?.startTime}
+            variant="ghost"
+            showPeriod={true}
+            onchange={(t) => {
+              if (t && ev) editValues.set(interval.id, { ...ev, startTime: t });
+            }}
+          />
 
-          <span class="text-muted-foreground select-none">→</span>
+          <span class="text-muted-foreground select-none shrink-0">→</span>
 
-          <span
-            class="font-mono tabular-nums w-20 shrink-0 {isRunning
-              ? 'text-green-500'
-              : 'text-foreground'}"
-          >
-            {#if isRunning}
+          {#if isRunning}
+            <span class="font-mono tabular-nums w-20 shrink-0 text-green-500">
               <span
                 class="inline-block w-1.5 h-1.5 rounded-full bg-green-500 mr-1 mb-0.5 animate-pulse"
               ></span>live
-            {:else}
-              {formatTime(interval.end_ms!)}
-            {/if}
-          </span>
+            </span>
+          {:else}
+            <TimeInput
+              value={ev?.endTime}
+              variant="ghost"
+              showPeriod={true}
+              onchange={(t) => {
+                if (t && ev) editValues.set(interval.id, { ...ev, endTime: t });
+              }}
+            />
+          {/if}
 
-          <span class="font-mono tabular-nums text-muted-foreground ml-auto">
+          <span class="font-mono tabular-nums text-muted-foreground ml-auto shrink-0">
             {formatElapsed(durationMs)}
           </span>
         </div>

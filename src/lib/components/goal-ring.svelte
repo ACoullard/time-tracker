@@ -1,7 +1,7 @@
 <script lang="ts">
   import { now } from "$lib/now.svelte";
   import { formatElapsed } from "$lib/utils";
-  import { commands, type RangeTotal } from "$lib/bindings";
+  import { commands, events, type RangeTotal } from "$lib/bindings";
 
   type Props = {
     fromMs: number;
@@ -17,12 +17,19 @@
 
   let rangeTotal = $state<RangeTotal>({ total_ms: 0, most_recent: null });
 
+  async function fetchTotal() {
+    const result = await commands.getRangeTotal(fromMs, toMs);
+    if (result.status === "ok") rangeTotal = result.data;
+  }
+
   $effect(() => {
     fromMs; toMs; isRunning;
-    (async () => {
-      const result = await commands.getRangeTotal(fromMs, toMs);
-      if (result.status === "ok") rangeTotal = result.data;
-    })();
+    fetchTotal();
+  });
+
+  $effect(() => {
+    const unsub = events.intervalChanged.listen(() => fetchTotal());
+    return () => { unsub.then((fn) => fn()); };
   });
 
   let liveMs = $derived.by(() => {

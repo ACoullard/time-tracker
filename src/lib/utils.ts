@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { Time } from "@internationalized/date";
 
 export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
@@ -18,6 +19,17 @@ export function formatElapsed(ms: number): string {
 	const m = Math.floor((total % 3600) / 60);
 	const s = total % 60;
 	return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+export function msToTime(ms: number): Time {
+	const d = new Date(ms);
+	return new Time(d.getHours(), d.getMinutes());
+}
+
+export function applyTimeToMs(originalMs: number, t: Time): number {
+	const d = new Date(originalMs);
+	d.setHours(t.hour, t.minute, 0, 0);
+	return d.getTime();
 }
 
 export function formatTime(ms: number): string {
