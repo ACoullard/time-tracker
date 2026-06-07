@@ -11,6 +11,12 @@ pub struct TrayState {
     tray: tauri::tray::TrayIcon<Wry>,
     toggle_item: MenuItem<Wry>,
     timer: Mutex<TimerState>,
+    icon_running: tauri::image::Image<'static>,
+    icon_paused: tauri::image::Image<'static>,
+}
+
+fn load_icon(bytes: &'static [u8]) -> tauri::image::Image<'static> {
+    tauri::image::Image::from_bytes(bytes).expect("valid PNG icon")
 }
 
 fn now_ms() -> i64 {
@@ -32,9 +38,15 @@ fn format_hms(ms: i64) -> String {
     }
 }
 
+const PNG_RUNNING: &[u8] = include_bytes!("../icons/stopwatch-running.png");
+const PNG_PAUSED: &[u8] = include_bytes!("../icons/stopwatch-paused.png");
+
 pub fn setup(app: &tauri::App<Wry>, initial: TimerState) -> tauri::Result<()> {
     let handle = app.handle().clone();
     let running = matches!(initial, TimerState::Running { .. });
+
+    let icon_running = load_icon(PNG_RUNNING);
+    let icon_paused = load_icon(PNG_PAUSED);
 
     let toggle = MenuItem::with_id(
         app,
@@ -49,13 +61,14 @@ pub fn setup(app: &tauri::App<Wry>, initial: TimerState) -> tauri::Result<()> {
 
     let menu = Menu::with_items(app, &[&toggle, &show_hide, &quit])?;
 
-    let icon = app
-        .default_window_icon()
-        .expect("bundle should provide a default window icon")
-        .clone();
+    let initial_icon = if running {
+        icon_running.clone()
+    } else {
+        icon_paused.clone()
+    };
 
     let builder = TrayIconBuilder::new()
-        .icon(icon)
+        .icon(initial_icon)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(handle_menu)
@@ -79,6 +92,8 @@ pub fn setup(app: &tauri::App<Wry>, initial: TimerState) -> tauri::Result<()> {
         tray,
         toggle_item: toggle,
         timer: Mutex::new(initial),
+        icon_running,
+        icon_paused,
     });
 
     refresh(&handle);
@@ -117,6 +132,11 @@ pub fn on_stopped(app: &AppHandle<Wry>, duration_ms: i64) {
 fn refresh(app: &AppHandle<Wry>) {
     let state = app.state::<TrayState>();
     let timer = *state.timer.lock().unwrap();
+    let icon = match timer {
+        TimerState::Running { .. } => state.icon_running.clone(),
+        _ => state.icon_paused.clone(),
+    };
+    let _ = state.tray.set_icon(Some(icon));
     apply(&state, timer);
 }
 

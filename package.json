@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "gen-icons": "node scripts/gen-tray-icons.js"
   },
   "license": "MIT",
   "dependencies": {
@@ -22,6 +23,7 @@
   "devDependencies": {
     "@fontsource-variable/inter": "^5.2.8",
     "@lucide/svelte": "^1.14.0",
+    "@resvg/resvg-js": "^2.6.2",
     "@sveltejs/adapter-static": "^3.0.6",
     "@sveltejs/kit": "^2.9.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
