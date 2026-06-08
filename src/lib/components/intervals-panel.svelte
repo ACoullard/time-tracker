@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Time } from "@internationalized/date";
+  import { Trash2 } from "@lucide/svelte";
   import { now } from "$lib/now.svelte";
   import { formatElapsed, msToTime, applyTimeToMs } from "$lib/utils";
   import { commands, events, type Interval } from "$lib/bindings";
@@ -52,6 +53,11 @@
     const unsub = events.intervalChanged.listen(() => fetchIntervals());
     return () => { unsub.then((fn) => fn()); };
   });
+
+  async function deleteInterval(id: number) {
+    const r = await commands.deleteInterval(id);
+    if (r.status === "error") error = r.error;
+  }
 
   async function saveInterval(id: number) {
     const interval = intervals.find((iv) => iv.id === id);
@@ -164,6 +170,14 @@
           <span class="font-mono tabular-nums text-muted-foreground ml-auto shrink-0">
             {formatElapsed(durationMs)}
           </span>
+
+          <button
+            type="button"
+            class="shrink-0 p-0.5 rounded text-muted-foreground/40 hover:text-destructive transition-colors"
+            onclick={() => deleteInterval(interval.id)}
+          >
+            <Trash2 size={13} />
+          </button>
         </div>
       {/each}
     </div>

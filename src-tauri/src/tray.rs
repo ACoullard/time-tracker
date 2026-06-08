@@ -129,6 +129,13 @@ pub fn on_stopped(app: &AppHandle<Wry>, duration_ms: i64) {
     refresh(app);
 }
 
+pub fn on_empty(app: &AppHandle<Wry>) {
+    let state = app.state::<TrayState>();
+    *state.timer.lock().unwrap() = TimerState::Empty;
+    let _ = state.toggle_item.set_text("Start");
+    refresh(app);
+}
+
 fn refresh(app: &AppHandle<Wry>) {
     let state = app.state::<TrayState>();
     let timer = *state.timer.lock().unwrap();

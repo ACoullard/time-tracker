@@ -115,6 +115,14 @@ pub fn update_interval(
     Ok(())
 }
 
+pub fn delete_interval(conn: &Connection, id: i64) -> Result<(), DbError> {
+    let rows = conn.execute("DELETE FROM intervals WHERE id = ?1", params![id])?;
+    if rows == 0 {
+        return Err(DbError::NotFound);
+    }
+    Ok(())
+}
+
 pub fn get_time_range_total(
     conn: &Connection,
     from_ms: i64,

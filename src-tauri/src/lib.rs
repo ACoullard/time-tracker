@@ -53,10 +53,8 @@ impl From<String> for CmdError {
 
 pub type CmdResult<T> = Result<T, CmdError>;
 
-#[derive(Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
-pub struct IntervalChanged {
-    pub running_start_ms: Option<i64>,
-}
+#[derive(Clone, Default, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct IntervalChanged {}
 
 pub fn do_begin(app: &AppHandle<Wry>) -> CmdResult<i64> {
     let state = app.state::<AppState>();
@@ -64,10 +62,7 @@ pub fn do_begin(app: &AppHandle<Wry>) -> CmdResult<i64> {
     let start = tracker::begin_interval(&conn, now_ms())?;
     drop(conn);
     tray::on_started(app, start);
-    let _ = IntervalChanged {
-        running_start_ms: Some(start),
-    }
-    .emit(app);
+    let _ = IntervalChanged {}.emit(app);
     Ok(start)
 }
 
@@ -82,10 +77,7 @@ pub fn do_end(app: &AppHandle<Wry>) -> CmdResult<()> {
     drop(conn);
     let duration = end - start_ms;
     tray::on_stopped(app, duration);
-    let _ = IntervalChanged {
-        running_start_ms: None,
-    }
-    .emit(app);
+    let _ = IntervalChanged {}.emit(app);
     Ok(())
 }
 
@@ -135,12 +127,24 @@ fn update_interval(app: AppHandle<Wry>, id: i64, start_ms: i64, end_ms: Option<i
     let state = app.state::<AppState>();
     let conn = state.db.lock().unwrap();
     tracker::update_interval(&conn, id, start_ms, end_ms)?;
-    let running_start = match tracker::timer_state(&conn)? {
-        TimerState::Running { start_ms: s } => Some(s),
-        _ => None,
-    };
     drop(conn);
-    let _ = IntervalChanged { running_start_ms: running_start }.emit(&app);
+    let _ = IntervalChanged {}.emit(&app);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+fn delete_interval(app: AppHandle<Wry>, id: i64) -> CmdResult<()> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().unwrap();
+    let before = tracker::timer_state(&conn)?;
+    tracker::delete_interval(&conn, id)?;
+    let after = tracker::timer_state(&conn)?;
+    drop(conn);
+    if matches!(before, TimerState::Running { .. }) && !matches!(after, TimerState::Running { .. }) {
+        tray::on_empty(&app);
+    }
+    let _ = IntervalChanged {}.emit(&app);
     Ok(())
 }
 
@@ -164,6 +168,7 @@ pub fn run() {
             get_current_goal,
             set_daily_goal,
             update_interval,
+            delete_interval,
         ])
         .events(tauri_specta::collect_events![IntervalChanged]);
 

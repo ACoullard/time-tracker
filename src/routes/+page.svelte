@@ -27,19 +27,20 @@
   const todayFromMs = todayStart.getTime();
   const todayToMs = todayEnd.getTime();
 
+  async function syncTimerState() {
+    const result = await commands.getTimerState();
+    if (result.status === "ok") {
+      const s = result.data;
+      startMs = s.state === "Running" ? s.start_ms : null;
+      lastDurationMs = s.state === "Paused" ? s.last_duration_ms : null;
+    } else {
+      error = result.error;
+    }
+  }
+
   $effect(() => {
     (async () => {
-      const result = await commands.getTimerState();
-      if (result.status === "ok") {
-        const s = result.data;
-        if (s.state === "Running") {
-          startMs = s.start_ms;
-        } else if (s.state === "Paused") {
-          lastDurationMs = s.last_duration_ms;
-        }
-      } else {
-        error = result.error;
-      }
+      await syncTimerState();
 
       const gr = await commands.getCurrentGoal();
       if (gr.status === "ok") {
@@ -53,12 +54,8 @@
   });
 
   $effect(() => {
-    const unsub = events.intervalChanged.listen((evt) => {
-      const newStart = evt.payload.running_start_ms;
-      if (newStart === null && startMs !== null) {
-        lastDurationMs = Date.now() - startMs;
-      }
-      startMs = newStart;
+    const unsub = events.intervalChanged.listen(async () => {
+      await syncTimerState();
       bumpNow();
     });
     return () => {
