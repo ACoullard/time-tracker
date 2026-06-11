@@ -77,6 +77,11 @@
     // intervalChanged event fired by backend triggers fetchIntervals automatically
   }
 
+  let nowTime = $derived.by(() => {
+    const d = new Date(now());
+    return new Time(d.getHours(), d.getMinutes());
+  });
+
   let runningInterval = $derived(
     intervals.length > 0 && intervals.at(-1)!.end_ms === null
       ? intervals.at(-1)!
@@ -143,6 +148,7 @@
             value={ev?.startTime}
             variant="ghost"
             showPeriod={true}
+            maxValue={ev?.endTime ?? nowTime}
             onchange={(t) => {
               if (t && ev) editValues.set(interval.id, { ...ev, startTime: t });
             }}
@@ -161,6 +167,8 @@
               value={ev?.endTime}
               variant="ghost"
               showPeriod={true}
+              minValue={ev?.startTime}
+              maxValue={nowTime}
               onchange={(t) => {
                 if (t && ev) editValues.set(interval.id, { ...ev, endTime: t });
               }}
