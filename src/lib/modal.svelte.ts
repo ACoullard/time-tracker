@@ -1,28 +1,42 @@
-export type ModalVariant = {
-	title: string;
-	message: string;
-	onConfirm: () => void;
-	onCancel: () => void;
+import type { Component } from 'svelte';
+import ConfirmModal from '$lib/components/modals/confirm.svelte';
+
+export type ModalMap = {
+	confirm: { props: { title: string; message: string }; result: boolean };
 };
 
-let _modal = $state<ModalVariant | null>(null);
+type RegistryEntry = {
+	component: Component<any>;
+	defaultResult: unknown;
+};
 
-export function modal(): ModalVariant | null {
+export const modalRegistry: Record<keyof ModalMap, RegistryEntry> = {
+	confirm: { component: ConfirmModal, defaultResult: false },
+};
+
+type ModalState = {
+	name: keyof ModalMap;
+	props: unknown;
+	resolve: (result: unknown) => void;
+};
+
+let _modal = $state<ModalState | null>(null);
+
+export function activeModal(): ModalState | null {
 	return _modal;
 }
 
-export function openConfirm(title: string, message: string): Promise<boolean> {
+export function openModal<K extends keyof ModalMap>(
+	name: K,
+	props: ModalMap[K]['props']
+): Promise<ModalMap[K]['result']> {
 	return new Promise((resolve) => {
 		_modal = {
-			title,
-			message,
-			onConfirm: () => {
+			name,
+			props,
+			resolve: (result) => {
 				_modal = null;
-				resolve(true);
-			},
-			onCancel: () => {
-				_modal = null;
-				resolve(false);
+				(resolve as (v: unknown) => void)(result);
 			}
 		};
 	});

@@ -1,19 +1,19 @@
 <script lang="ts">
 	import * as Dialog from '$lib/components/ui/dialog';
-	import { modal } from '$lib/modal.svelte';
-	import ModalCard from './modal-card.svelte';
+	import { activeModal, modalRegistry } from '$lib/modal.svelte';
 </script>
 
-{#if modal() !== null}
-	{@const m = modal()!}
+{#if activeModal() !== null}
+	{@const m = activeModal()!}
+	{@const entry = modalRegistry[m.name]}
 	<Dialog.Root
 		open={true}
 		onOpenChange={(isOpen) => {
-			if (!isOpen) m.onCancel();
+			if (!isOpen) m.resolve(entry.defaultResult);
 		}}
 	>
 		<Dialog.Content showCloseButton={false}>
-			<ModalCard title={m.title} message={m.message} onConfirm={m.onConfirm} onCancel={m.onCancel} />
+			<svelte:component this={entry.component} {...(m.props as any)} onResolve={m.resolve} />
 		</Dialog.Content>
 	</Dialog.Root>
 {/if}
