@@ -56,6 +56,13 @@ pub type CmdResult<T> = Result<T, CmdError>;
 #[derive(Clone, Default, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
 pub struct IntervalChanged {}
 
+#[derive(Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct PopupShow {
+    pub title: String,
+    pub message: String,
+}
+
 pub fn do_begin(app: &AppHandle<Wry>) -> CmdResult<i64> {
     let state = app.state::<AppState>();
     let conn = state.db.lock().unwrap();
@@ -156,6 +163,17 @@ fn set_daily_goal(state: State<AppState>, goal_ms: i64) -> CmdResult<()> {
     Ok(tracker::set_daily_goal(&conn, &day, goal_ms)?)
 }
 
+#[tauri::command]
+#[specta::specta]
+async fn show_system_popup(app: AppHandle<Wry>, title: String, message: String) -> CmdResult<()> {
+    if let Some(window) = app.get_webview_window("popup") {
+        let _ = PopupShow { title, message }.emit(&app);
+        window.show().map_err(|e| CmdError(e.to_string()))?;
+        window.set_focus().map_err(|e| CmdError(e.to_string()))?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri_specta::Builder::<tauri::Wry>::new()
@@ -169,8 +187,9 @@ pub fn run() {
             set_daily_goal,
             update_interval,
             delete_interval,
+            show_system_popup,
         ])
-        .events(tauri_specta::collect_events![IntervalChanged]);
+        .events(tauri_specta::collect_events![IntervalChanged, PopupShow]);
 
     #[cfg(debug_assertions)]
     builder

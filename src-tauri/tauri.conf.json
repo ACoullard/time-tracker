@@ -15,6 +15,21 @@
         "title": "time-tracker",
         "width": 800,
         "height": 600
+      },
+      {
+        "label": "popup",
+        "url": "/popup/",
+        "title": "Notification",
+        "width": 360,
+        "height": 180,
+        "resizable": false,
+        "visible": false,
+        "alwaysOnTop": true,
+        "center": true,
+        "decorations": false,
+        "transparent": true,
+        "skipTaskbar": true,
+        "focus": false
       }
     ],
     "security": {
