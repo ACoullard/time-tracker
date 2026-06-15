@@ -3860,6 +3860,7 @@ dependencies = [
  "tauri-plugin-store",
  "tauri-specta",
  "tokio",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

@@ -23,6 +23,41 @@ fn now_ms() -> i64 {
         .as_millis() as i64
 }
 
+#[cfg(target_os = "windows")]
+fn get_idle_duration_ms() -> u64 {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+    use windows_sys::Win32::System::SystemInformation::GetTickCount;
+    unsafe {
+        let mut info = LASTINPUTINFO {
+            cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32,
+            dwTime: 0,
+        };
+        if GetLastInputInfo(&mut info) == 0 {
+            return 0;
+        }
+        // wrapping_sub handles the ~49.7-day u32 rollover correctly
+        GetTickCount().wrapping_sub(info.dwTime) as u64
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn get_idle_duration_ms() -> u64 {
+    // CGEventSourceSecondsSinceLastEventType ships with macOS — no extra crate needed.
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGEventSourceSecondsSinceLastEventType(state_id: u32, event_type: u32) -> f64;
+    }
+    const COMBINED_SESSION_STATE: u32 = 1;
+    const ANY_INPUT_EVENT: u32 = 0xFFFF_FFFF;
+    let secs = unsafe { CGEventSourceSecondsSinceLastEventType(COMBINED_SESSION_STATE, ANY_INPUT_EVENT) };
+    (secs * 1000.0) as u64
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn get_idle_duration_ms() -> u64 {
+    0
+}
+
 #[derive(Debug, Serialize, specta::Type)]
 #[serde(transparent)]
 pub struct CmdError(String);
@@ -61,6 +96,12 @@ pub struct IntervalChanged {}
 pub struct PopupShow {
     pub title: String,
     pub message: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct IdleDetected {
+    pub idle_since_ms: i64,
 }
 
 pub fn do_begin(app: &AppHandle<Wry>) -> CmdResult<i64> {
@@ -105,6 +146,22 @@ fn begin_interval(app: AppHandle<Wry>) -> CmdResult<i64> {
 #[specta::specta]
 fn end_interval(app: AppHandle<Wry>) -> CmdResult<()> {
     do_end(&app)
+}
+
+#[tauri::command]
+#[specta::specta]
+fn end_interval_at(app: AppHandle<Wry>, end_ms: i64) -> CmdResult<()> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().unwrap();
+    let TimerState::Running { start_ms } = tracker::timer_state(&conn)? else {
+        return Err(CmdError::from("no interval running"));
+    };
+    tracker::end_interval(&conn, end_ms)?;
+    drop(conn);
+    let duration = end_ms - start_ms;
+    tray::on_stopped(&app, duration);
+    let _ = IntervalChanged {}.emit(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -181,6 +238,7 @@ pub fn run() {
             get_timer_state,
             begin_interval,
             end_interval,
+            end_interval_at,
             get_intervals,
             get_range_total,
             get_current_goal,
@@ -189,7 +247,7 @@ pub fn run() {
             delete_interval,
             show_system_popup,
         ])
-        .events(tauri_specta::collect_events![IntervalChanged, PopupShow]);
+        .events(tauri_specta::collect_events![IntervalChanged, PopupShow, IdleDetected]);
 
     #[cfg(debug_assertions)]
     builder
@@ -225,6 +283,59 @@ pub fn run() {
             });
 
             tray::setup(app, initial)?;
+
+            let idle_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                use tauri_plugin_store::StoreExt;
+                let mut last_fired_idle_since: Option<i64> = None;
+
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+
+                    let threshold_ms: u64 = idle_handle
+                        .store("settings.json")
+                        .ok()
+                        .and_then(|s| s.get("idleThresholdMs"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(5 * 60 * 1000);
+
+                    let state = idle_handle.state::<AppState>();
+                    let is_running = {
+                        let conn = state.db.lock().unwrap();
+                        matches!(
+                            tracker::timer_state(&conn).unwrap_or(TimerState::Empty),
+                            TimerState::Running { .. }
+                        )
+                    };
+                    if !is_running {
+                        last_fired_idle_since = None;
+                        continue;
+                    }
+
+                    let idle_ms = get_idle_duration_ms();
+                    if idle_ms < threshold_ms {
+                        last_fired_idle_since = None;
+                        continue;
+                    }
+
+                    let idle_since_ms = now_ms() - idle_ms as i64;
+                    let already_sent = last_fired_idle_since
+                        .map(|prev| (idle_since_ms - prev).abs() < 60_000)
+                        .unwrap_or(false);
+                    if already_sent {
+                        continue;
+                    }
+
+                    last_fired_idle_since = Some(idle_since_ms);
+
+                    if let Some(popup) = idle_handle.get_webview_window("popup") {
+                        let _ = popup.show();
+                        let _ = popup.set_focus();
+                    }
+                    let _ = IdleDetected { idle_since_ms }.emit(&idle_handle);
+                }
+            });
+
             Ok(())
         })
         .run(tauri::generate_context!())

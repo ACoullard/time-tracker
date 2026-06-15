@@ -4,6 +4,7 @@
   "description": "Capability for the system popup window",
   "windows": ["popup"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "core:window:allow-hide"
   ]
 }
