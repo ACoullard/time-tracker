@@ -99,8 +99,6 @@
 
 <main class="p-8 flex gap-20 max-w-3xl mx-auto">
   <div class="flex-none w-64">
-    <h1 class="text-2xl font-semibold mb-6">Time Tracker</h1>
-
     <div class="flex justify-center mb-6">
       <GoalRing
         fromMs={todayFromMs}
