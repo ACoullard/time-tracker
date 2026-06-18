@@ -33,6 +33,10 @@ export function applyTimeToMs(originalMs: number, t: Time): number {
 	return d.getTime();
 }
 
+export function formatIsoYMD(d: Date): string {
+	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function formatTime(ms: number): string {
 	return new Date(ms).toLocaleTimeString(undefined, {
 		hour: "numeric",

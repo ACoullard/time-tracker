@@ -3,14 +3,14 @@ mod tray;
 
 use std::sync::Mutex;
 
-use chrono::Local;
+use chrono::{Duration, Local, NaiveDate, TimeZone};
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
 use tauri_specta::Event;
 
-use tracker::{init_schema, DailyGoal, Interval, RangeTotal, TimerState};
+use tracker::{init_schema, DailyGoal, DailyTotal, Interval, RangeTotal, TimerState};
 
 pub struct AppState {
     db: Mutex<Connection>,
@@ -220,6 +220,50 @@ fn set_daily_goal(state: State<AppState>, goal_ms: i64) -> CmdResult<()> {
     Ok(tracker::set_daily_goal(&conn, &day, goal_ms)?)
 }
 
+fn build_day_list(from_day: &str, to_day: &str) -> CmdResult<Vec<(String, i64, i64)>> {
+    let from = NaiveDate::parse_from_str(from_day, "%Y-%m-%d")
+        .map_err(|e| CmdError::from(e.to_string()))?;
+    let to = NaiveDate::parse_from_str(to_day, "%Y-%m-%d")
+        .map_err(|e| CmdError::from(e.to_string()))?;
+
+    let mut days = Vec::new();
+    let mut cur = from;
+    while cur <= to {
+        let key = cur.format("%Y-%m-%d").to_string();
+        let next = cur + Duration::days(1);
+        let start_ms = Local
+            .from_local_datetime(&cur.and_hms_opt(0, 0, 0).unwrap())
+            .earliest()
+            .ok_or_else(|| CmdError::from("invalid local datetime"))?
+            .timestamp_millis();
+        let end_ms = Local
+            .from_local_datetime(&next.and_hms_opt(0, 0, 0).unwrap())
+            .earliest()
+            .ok_or_else(|| CmdError::from("invalid local datetime"))?
+            .timestamp_millis();
+        days.push((key, start_ms, end_ms));
+        cur = next;
+    }
+    Ok(days)
+}
+
+#[tauri::command]
+#[specta::specta]
+fn get_daily_totals(state: State<AppState>, from_day: String, to_day: String) -> CmdResult<Vec<DailyTotal>> {
+    let days = build_day_list(&from_day, &to_day)?;
+    let conn = state.db.lock().unwrap();
+    Ok(tracker::get_daily_totals(&conn, &days)?)
+}
+
+#[tauri::command]
+#[specta::specta]
+fn get_daily_goals_for_range(state: State<AppState>, from_day: String, to_day: String) -> CmdResult<Vec<DailyGoal>> {
+    let days = build_day_list(&from_day, &to_day)?;
+    let day_keys: Vec<String> = days.into_iter().map(|(k, _, _)| k).collect();
+    let conn = state.db.lock().unwrap();
+    Ok(tracker::get_applicable_goals(&conn, &day_keys)?)
+}
+
 #[tauri::command]
 #[specta::specta]
 async fn show_system_popup(app: AppHandle<Wry>, title: String, message: String) -> CmdResult<()> {
@@ -246,6 +290,8 @@ pub fn run() {
             update_interval,
             delete_interval,
             show_system_popup,
+            get_daily_totals,
+            get_daily_goals_for_range,
         ])
         .events(tauri_specta::collect_events![IntervalChanged, PopupShow, IdleDetected]);
 

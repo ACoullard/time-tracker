@@ -2,6 +2,8 @@
   import DayAxis from '$lib/components/charts/day-axis.svelte';
   import BarChart from '$lib/components/charts/bar-chart.svelte';
   import RingChart from '$lib/components/charts/ring-chart.svelte';
+  import { commands, events } from '$lib/bindings';
+  import { formatIsoYMD } from '$lib/utils';
 
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
@@ -10,16 +12,36 @@
     return d;
   });
 
-  // DUMMY DATA — replace this block in the real-data PR.
-  // rawValues mirrors the shape the backend will return: Map<"YYYY-MM-DD", value>
-  const dayKey = (d: Date) => d.toISOString().slice(0, 10);
-  const HOUR = 3_600_000;
-  const GOAL = 8 * HOUR;
-  const rawValues = new Map(days.map(d => [dayKey(d), Math.random() * 10 * HOUR]));
 
-  // Translation layer — stays as-is when real data arrives; only rawValues changes
-  const barData = days.map(d => ({ date: d, value: rawValues.get(dayKey(d)) ?? 0 }));
-  const ringData = days.map(d => ({ date: d, current: rawValues.get(dayKey(d)) ?? 0, max: GOAL }));
+  let barData = $state(days.map(d => ({ date: d, value: 0 })));
+  let ringData = $state(days.map(d => ({ date: d, current: 0, max: 0 })));
+
+  $effect(() => {
+    async function load() {
+      const from = formatIsoYMD(days[0]);
+      const to = formatIsoYMD(days[days.length - 1]);
+      const [totalsRes, goalsRes] = await Promise.all([
+        commands.getDailyTotals(from, to),
+        commands.getDailyGoalsForRange(from, to),
+      ]);
+      if (totalsRes.status === 'ok') {
+        const totals = new Map(totalsRes.data.map(t => [t.day, t.total_ms]));
+        barData = days.map(d => ({ date: d, value: totals.get(formatIsoYMD(d)) ?? 0 }));
+
+        if (goalsRes.status === 'ok') {
+          const goals = new Map(goalsRes.data.map(g => [g.day, g.goal_ms]));
+          ringData = days.map(d => ({
+            date: d,
+            current: totals.get(formatIsoYMD(d)) ?? 0,
+            max: goals.get(formatIsoYMD(d)) ?? 0,
+          }));
+        }
+      }
+    }
+
+    load();
+    return events.intervalChanged.listen(load);
+  });
 </script>
 
 <main class="p-8 flex flex-col gap-6 max-w-3xl mx-auto max-h-full">

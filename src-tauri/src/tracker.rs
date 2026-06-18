@@ -41,6 +41,12 @@ pub struct DailyGoal {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct DailyTotal {
+    pub day: String,
+    pub total_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct RangeTotal {
     pub total_ms: i64,
     pub most_recent: Option<Interval>,
@@ -211,6 +217,66 @@ pub fn get_intervals(
         })
     })?;
     rows.collect()
+}
+
+pub fn get_daily_totals(conn: &Connection, days: &[(String, i64, i64)]) -> rusqlite::Result<Vec<DailyTotal>> {
+    if days.is_empty() {
+        return Ok(vec![]);
+    }
+    let first_start = days[0].1;
+    let last_end = days[days.len() - 1].2;
+
+    let mut stmt = conn.prepare(
+        "SELECT start_ms, end_ms FROM intervals
+         WHERE start_ms < ?2 AND end_ms IS NOT NULL AND end_ms > ?1
+         ORDER BY start_ms ASC",
+    )?;
+    let closed: Vec<(i64, i64)> = stmt
+        .query_map(params![first_start, last_end], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+
+    let mut result = Vec::with_capacity(days.len());
+    for (key, day_start, day_end) in days {
+        let mut total_ms: i64 = 0;
+        for &(start, end) in &closed {
+            if start >= *day_end || end <= *day_start {
+                continue;
+            }
+            total_ms += (end.min(*day_end) - start.max(*day_start)).max(0);
+        }
+        result.push(DailyTotal { day: key.clone(), total_ms });
+    }
+    Ok(result)
+}
+
+pub fn get_applicable_goals(conn: &Connection, day_keys: &[String]) -> rusqlite::Result<Vec<DailyGoal>> {
+    if day_keys.is_empty() {
+        return Ok(vec![]);
+    }
+    let last_key = &day_keys[day_keys.len() - 1];
+
+    let mut stmt = conn.prepare(
+        "SELECT day, goal_ms FROM daily_goals WHERE day <= ?1 ORDER BY day ASC",
+    )?;
+    let all_goals: Vec<DailyGoal> = stmt
+        .query_map(params![last_key], |row| {
+            Ok(DailyGoal { day: row.get(0)?, goal_ms: row.get(1)? })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+
+    let mut result = Vec::with_capacity(day_keys.len());
+    let mut goal_ptr = 0usize;
+    let mut current_goal_ms: i64 = 0;
+    for key in day_keys {
+        while goal_ptr < all_goals.len() && all_goals[goal_ptr].day.as_str() <= key.as_str() {
+            current_goal_ms = all_goals[goal_ptr].goal_ms;
+            goal_ptr += 1;
+        }
+        result.push(DailyGoal { day: key.clone(), goal_ms: current_goal_ms });
+    }
+    Ok(result)
 }
 
 #[cfg(test)]
