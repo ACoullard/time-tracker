@@ -14,7 +14,7 @@
 
   let yScale = $derived(
     scaleLinear()
-      .domain([0, max(data ?? [], d => d.value) ?? 1])
+      .domain([0, max(data ?? [], d => d.value) || 1])
       .range([0, 85])
   );
 </script>

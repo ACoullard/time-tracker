@@ -13,7 +13,7 @@
   const circumference = 2 * Math.PI * r;
 </script>
 
-<div class="grid gap-2 h-24" style="grid-template-columns: repeat({count}, 1fr)">
+<div class="grid gap-2 h-24 min-h-24" style="grid-template-columns: repeat({count}, 1fr)">
   {#each data ?? [] as day}
     <div class="relative">
       {#if day.max > 0}
