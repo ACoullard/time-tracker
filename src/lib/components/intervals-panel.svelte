@@ -64,13 +64,21 @@
     const ev = editValues.get(id);
     if (!interval || !ev) return;
 
-    const newStartMs = applyTimeToMs(interval.start_ms, ev.startTime);
-    const newEndMs =
-      ev.endTime !== undefined && interval.end_ms !== null
-        ? applyTimeToMs(interval.end_ms, ev.endTime)
-        : interval.end_ms;
+    const origStart = msToTime(interval.start_ms);
+    const startChanged = ev.startTime.hour !== origStart.hour || ev.startTime.minute !== origStart.minute;
+    const newStartMs = startChanged
+      ? applyTimeToMs(interval.start_ms, ev.startTime)
+      : interval.start_ms;
+
+    const origEnd = interval.end_ms !== null ? msToTime(interval.end_ms) : undefined;
+    const endChanged = origEnd !== undefined && ev.endTime !== undefined &&
+      (ev.endTime.hour !== origEnd.hour || ev.endTime.minute !== origEnd.minute);
+    const newEndMs = endChanged
+      ? applyTimeToMs(interval.end_ms!, ev.endTime!)
+      : interval.end_ms;
 
     if (newEndMs !== null && newStartMs >= newEndMs) return;
+    if (newStartMs === interval.start_ms && newEndMs === interval.end_ms) return;
 
     const r = await commands.updateInterval(id, newStartMs, newEndMs);
     if (r.status === "error") error = r.error;
