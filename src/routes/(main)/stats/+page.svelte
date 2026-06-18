@@ -21,11 +21,12 @@
   const ringData = days.map(d => ({ date: d, current: rawValues.get(dayKey(d)) ?? 0, max: GOAL }));
 </script>
 
-<main class="p-8 flex flex-col gap-6 max-w-3xl mx-auto">
-  <h1 class="text-2xl font-semibold">Stats</h1>
-  <div class="flex flex-col gap-3">
+<main class="p-8 flex flex-col gap-6 max-w-3xl mx-auto max-h-full">
+  <div class="flex flex-col gap-2 flex-1 min-h-0">
     <DayAxis dates={days} />
-    <BarChart data={barData} />
-    <RingChart data={ringData} />
+    <div class="flex flex-col gap-10 flex-1 min-h-0">
+      <BarChart data={barData} />
+      <RingChart data={ringData} />
+    </div>
   </div>
 </main>
