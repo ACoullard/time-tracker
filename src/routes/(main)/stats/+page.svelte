@@ -13,8 +13,9 @@
   // DUMMY DATA — replace this block in the real-data PR.
   // rawValues mirrors the shape the backend will return: Map<"YYYY-MM-DD", value>
   const dayKey = (d: Date) => d.toISOString().slice(0, 10);
-  const GOAL = 8;
-  const rawValues = new Map(days.map(d => [dayKey(d), Math.random() * 10]));
+  const HOUR = 3_600_000;
+  const GOAL = 8 * HOUR;
+  const rawValues = new Map(days.map(d => [dayKey(d), Math.random() * 10 * HOUR]));
 
   // Translation layer — stays as-is when real data arrives; only rawValues changes
   const barData = days.map(d => ({ date: d, value: rawValues.get(dayKey(d)) ?? 0 }));
