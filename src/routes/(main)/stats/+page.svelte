@@ -6,6 +6,7 @@
   import { formatIsoYMD } from '$lib/utils';
   import { now } from '$lib/now.svelte';
   import { ChevronLeft, ChevronRight } from '@lucide/svelte';
+  import { pageHeader } from '$lib/page-header.svelte';
 
   const todayKey = formatIsoYMD(new Date());
 
@@ -61,6 +62,11 @@
     return events.intervalChanged.listen(load);
   });
 
+  $effect(() => {
+    pageHeader.set(weekSelector);
+    return () => pageHeader.set(null);
+  });
+
   let barData = $derived(
     fetchedTotals === null ? null :
     days.map(d => {
@@ -82,24 +88,27 @@
   );
 </script>
 
+{#snippet weekSelector()}
+  <div class="flex items-center gap-1 border rounded-full p-1 shadow-xs">
+    <button
+      onclick={() => weekOffset--}
+      class="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+    >
+      <ChevronLeft size={20} strokeWidth={2} />
+    </button>
+    <span class="text-sm text-muted-foreground tabular-nums w-28 text-center">{weekLabel}</span>
+    <button
+      onclick={() => weekOffset++}
+      disabled={weekOffset >= 0}
+      class="p-1 rounded text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"
+    >
+      <ChevronRight size={20} strokeWidth={2} />
+    </button>
+  </div>
+{/snippet}
+
 <main class="p-8 flex flex-col gap-6 max-w-3xl mx-auto max-h-full">
   <div class="flex flex-col gap-2 flex-1 min-h-0">
-    <div class="flex items-center justify-between mb-1">
-      <button
-        onclick={() => weekOffset--}
-        class="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ChevronLeft size={16} />
-      </button>
-      <span class="text-sm text-muted-foreground">{weekLabel}</span>
-      <button
-        onclick={() => weekOffset++}
-        disabled={weekOffset >= 0}
-        class="p-1 rounded text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"
-      >
-        <ChevronRight size={16} />
-      </button>
-    </div>
     <DayAxis dates={days} />
     <div class="flex flex-col gap-10 flex-1 min-h-0">
       <BarChart data={barData} count={days.length} />

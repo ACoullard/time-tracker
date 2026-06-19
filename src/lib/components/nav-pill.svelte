@@ -11,7 +11,7 @@
 
 <nav
   aria-label="Main navigation"
-  class="group fixed top-3 left-10 z-50 overflow-hidden rounded-full border bg-background shadow-sm
+  class="group relative overflow-hidden rounded-full border bg-background shadow-sm
          h-11 w-11 hover:w-32 transition-[width] duration-200 ease-out"
 >
   <!-- Hamburger: fades out immediately on hover, reappears after collapse -->
