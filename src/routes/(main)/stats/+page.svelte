@@ -89,20 +89,20 @@
 </script>
 
 {#snippet weekSelector()}
-  <div class="flex items-center gap-1 border rounded-full p-1 shadow-xs">
+  <div class="flex items-center gap-1 border rounded-full p-1 px-2 shadow-xs">
     <button
       onclick={() => weekOffset--}
-      class="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+      class="p-1 px-2 rounded-md rounded-l-3xl hover:bg-muted transition-colors"
     >
-      <ChevronLeft size={20} strokeWidth={2} />
+      <ChevronLeft size={24} strokeWidth={2} />
     </button>
-    <span class="text-sm text-muted-foreground tabular-nums w-28 text-center">{weekLabel}</span>
+    <span class="text-lg tabular-nums text-center w-32">{weekLabel}</span>
     <button
       onclick={() => weekOffset++}
       disabled={weekOffset >= 0}
-      class="p-1 rounded text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"
+      class="p-1 px-2 rounded-md rounded-r-3xl hover:bg-muted transition-colors disabled:opacity-30 disabled:pointer-events-none"
     >
-      <ChevronRight size={20} strokeWidth={2} />
+      <ChevronRight size={24} strokeWidth={2} />
     </button>
   </div>
 {/snippet}

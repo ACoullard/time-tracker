@@ -22,6 +22,11 @@ export function formatElapsed(ms: number, truncateSeconds = false): string {
 	return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
+export function formatElapsedSeconds(ms: number): string {
+	const s = Math.floor(ms / 1000);
+	return `${s}s`;
+}
+
 export function msToTime(ms: number): Time {
 	const d = new Date(ms);
 	return new Time(d.getHours(), d.getMinutes());

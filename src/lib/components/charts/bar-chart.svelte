@@ -10,7 +10,7 @@
   type Props = { data: BarDay[] | null; count: number };
   let { data, count }: Props = $props();
 
-  import { formatElapsed } from '$lib/utils';
+  import { formatElapsed, formatElapsedSeconds } from '$lib/utils';
 
   let yScale = $derived(
     scaleLinear()
@@ -40,7 +40,7 @@
           class="absolute left-0 right-0 flex justify-center pointer-events-none"
           style="bottom: {barHeight + 2}%"
         >
-          <span class="text-sm text-muted-foreground leading-none">{formatElapsed(day.value, true)}</span>
+          <span class=" leading-none">{day.value > 60 * 1000 ?formatElapsed(day.value, true) : formatElapsedSeconds(day.value)}</span>
         </div>
       {/if}
     </div>
