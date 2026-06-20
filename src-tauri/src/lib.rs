@@ -266,6 +266,31 @@ fn get_daily_goals_for_range(state: State<AppState>, from_day: String, to_day: S
 
 #[tauri::command]
 #[specta::specta]
+fn get_streak(state: State<AppState>, as_of_day: String) -> CmdResult<u32> {
+    let conn = state.db.lock().unwrap();
+    let mut total_streak = 0u32;
+    let mut chunk_end = NaiveDate::parse_from_str(&as_of_day, "%Y-%m-%d")
+        .map_err(|e| CmdError::from(e.to_string()))?;
+
+    for _ in 0..1200 {
+        let chunk_start = chunk_end - Duration::days(30);
+        let days = build_day_list(
+            &chunk_start.format("%Y-%m-%d").to_string(),
+            &chunk_end.format("%Y-%m-%d").to_string(),
+        )?;
+        let chunk_streak = tracker::get_streak(&conn, &days)?;
+        total_streak += chunk_streak;
+        if chunk_streak < days.len() as u32 {
+            break;
+        }
+        chunk_end = chunk_start - Duration::days(1);
+    }
+
+    Ok(total_streak)
+}
+
+#[tauri::command]
+#[specta::specta]
 async fn show_system_popup(app: AppHandle<Wry>, title: String, message: String) -> CmdResult<()> {
     if let Some(window) = app.get_webview_window("popup") {
         let _ = PopupShow { title, message }.emit(&app);
@@ -292,6 +317,7 @@ pub fn run() {
             show_system_popup,
             get_daily_totals,
             get_daily_goals_for_range,
+            get_streak,
         ])
         .events(tauri_specta::collect_events![IntervalChanged, PopupShow, IdleDetected]);
 

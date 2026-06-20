@@ -13,7 +13,7 @@
 
 <div class="grid gap-2" style="grid-template-columns: repeat({dates.length}, 1fr)">
   {#each dates as date}
-    <div class="flex flex-col items-center text-xs text-muted-foreground">
+    <div class="flex flex-col items-center text-sm text-muted-foreground">
       <span>{fmtDate(date)}</span>
       <span>{fmtDay(date)}</span>
     </div>

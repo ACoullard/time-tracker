@@ -19,7 +19,7 @@
   );
 </script>
 
-<div class="grid gap-2 min-h-20" style="grid-template-columns: repeat({count}, 1fr)">
+<div class="grid gap-2 min-h-20 min-w-xl" style="grid-template-columns: repeat({count}, 1fr)">
   {#each (data ?? Array.from({ length: count }, () => null)) as day}
     {@const barHeight = day ? yScale(day.value) : 0}
     <div class="relative min-h-0">

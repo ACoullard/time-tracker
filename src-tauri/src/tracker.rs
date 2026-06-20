@@ -279,6 +279,27 @@ pub fn get_applicable_goals(conn: &Connection, day_keys: &[String]) -> rusqlite:
     Ok(result)
 }
 
+// Counts consecutive days ending at the last entry in `days` where total_ms >= goal_ms.
+// Days with no goal set (goal_ms = 0) break the streak.
+pub fn get_streak(conn: &Connection, days: &[(String, i64, i64)]) -> rusqlite::Result<u32> {
+    if days.is_empty() {
+        return Ok(0);
+    }
+    let goal_keys: Vec<String> = days.iter().map(|(k, _, _)| k.clone()).collect();
+    let goals = get_applicable_goals(conn, &goal_keys)?;
+    let totals = get_daily_totals(conn, days)?;
+
+    let mut streak = 0u32;
+    for i in (0..days.len()).rev() {
+        let goal_ms = goals[i].goal_ms;
+        if goal_ms == 0 || totals[i].total_ms < goal_ms {
+            break;
+        }
+        streak += 1;
+    }
+    Ok(streak)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
