@@ -219,23 +219,45 @@ pub fn get_intervals(
     rows.collect()
 }
 
+// Closed (start, end) intervals overlapping `[from_ms, to_ms)`, ordered by start
+// ascending. Running intervals are excluded.
+fn closed_intervals_in_range(
+    conn: &Connection,
+    from_ms: i64,
+    to_ms: i64,
+) -> rusqlite::Result<Vec<(i64, i64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT start_ms, end_ms FROM intervals
+         WHERE start_ms < ?2 AND end_ms IS NOT NULL AND end_ms > ?1
+         ORDER BY start_ms ASC",
+    )?;
+    let rows = stmt
+        .query_map(params![from_ms, to_ms], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
+// Every goal dated on or before `last_day`, ordered by day ascending.
+fn goals_through(conn: &Connection, last_day: &str) -> rusqlite::Result<Vec<DailyGoal>> {
+    let mut stmt =
+        conn.prepare("SELECT day, goal_ms FROM daily_goals WHERE day <= ?1 ORDER BY day ASC")?;
+    let rows = stmt
+        .query_map(params![last_day], |row| {
+            Ok(DailyGoal { day: row.get(0)?, goal_ms: row.get(1)? })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
 pub fn get_daily_totals(conn: &Connection, days: &[(String, i64, i64)]) -> rusqlite::Result<Vec<DailyTotal>> {
     if days.is_empty() {
         return Ok(vec![]);
     }
     let first_start = days[0].1;
     let last_end = days[days.len() - 1].2;
-
-    let mut stmt = conn.prepare(
-        "SELECT start_ms, end_ms FROM intervals
-         WHERE start_ms < ?2 AND end_ms IS NOT NULL AND end_ms > ?1
-         ORDER BY start_ms ASC",
-    )?;
-    let closed: Vec<(i64, i64)> = stmt
-        .query_map(params![first_start, last_end], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
-        })?
-        .collect::<rusqlite::Result<_>>()?;
+    let closed = closed_intervals_in_range(conn, first_start, last_end)?;
 
     let mut result = Vec::with_capacity(days.len());
     for (key, day_start, day_end) in days {
@@ -256,15 +278,7 @@ pub fn get_applicable_goals(conn: &Connection, day_keys: &[String]) -> rusqlite:
         return Ok(vec![]);
     }
     let last_key = &day_keys[day_keys.len() - 1];
-
-    let mut stmt = conn.prepare(
-        "SELECT day, goal_ms FROM daily_goals WHERE day <= ?1 ORDER BY day ASC",
-    )?;
-    let all_goals: Vec<DailyGoal> = stmt
-        .query_map(params![last_key], |row| {
-            Ok(DailyGoal { day: row.get(0)?, goal_ms: row.get(1)? })
-        })?
-        .collect::<rusqlite::Result<_>>()?;
+    let all_goals = goals_through(conn, last_key)?;
 
     let mut result = Vec::with_capacity(day_keys.len());
     let mut goal_ptr = 0usize;
@@ -285,14 +299,41 @@ pub fn get_streak(conn: &Connection, days: &[(String, i64, i64)]) -> rusqlite::R
     if days.is_empty() {
         return Ok(0);
     }
-    let goal_keys: Vec<String> = days.iter().map(|(k, _, _)| k.clone()).collect();
-    let goals = get_applicable_goals(conn, &goal_keys)?;
-    let totals = get_daily_totals(conn, days)?;
+    let range_start = days[0].1;
+    let range_end = days[days.len() - 1].2;
+    let intervals = closed_intervals_in_range(conn, range_start, range_end)?;
+
+    let last_key = days[days.len() - 1].0.as_str();
+    let goals = goals_through(conn, last_key)?;
+
+    // All three pointers start past the end and only ever walk left.
+    let mut hi = intervals.len(); // count of intervals starting before the day's end
+    let mut lo = intervals.len(); // first interval ending after the day's start
+    let mut gi = goals.len(); // count of goals dated on or before the day
 
     let mut streak = 0u32;
-    for i in (0..days.len()).rev() {
-        let goal_ms = goals[i].goal_ms;
-        if goal_ms == 0 || totals[i].total_ms < goal_ms {
+    for (key, day_start, day_end) in days.iter().rev() {
+        // Borders of the day's interval window: [lo, hi).
+        while hi > 0 && intervals[hi - 1].0 >= *day_end {
+            hi -= 1;
+        }
+        while lo > 0 && intervals[lo - 1].1 > *day_start {
+            lo -= 1;
+        }
+        // Most recent goal set on or before this day; absent goal => 0.
+        while gi > 0 && goals[gi - 1].day.as_str() > key.as_str() {
+            gi -= 1;
+        }
+        let goal_ms = if gi > 0 { goals[gi - 1].goal_ms } else { 0 };
+        if goal_ms == 0 {
+            break;
+        }
+
+        let mut total_ms: i64 = 0;
+        for &(start, end) in &intervals[lo..hi] {
+            total_ms += (end.min(*day_end) - start.max(*day_start)).max(0);
+        }
+        if total_ms < goal_ms {
             break;
         }
         streak += 1;
@@ -523,6 +564,96 @@ mod tests {
         let g = get_current_goal(&conn).unwrap().unwrap();
         assert_eq!(g.day, "2024-01-15");
         assert_eq!(g.goal_ms, 5_400_000);
+    }
+
+    // Builds a contiguous ascending day list of `n` days, each `len` ms wide,
+    // starting at `start`. Keys are synthetic but sort chronologically.
+    fn day_list(start: i64, len: i64, n: i64) -> Vec<(String, i64, i64)> {
+        (0..n)
+            .map(|i| {
+                let s = start + i * len;
+                (format!("2024-01-{:02}", i + 1), s, s + len)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn streak_empty_days_is_zero() {
+        let conn = setup();
+        assert_eq!(get_streak(&conn, &[]).unwrap(), 0);
+    }
+
+    #[test]
+    fn streak_no_goal_is_zero() {
+        let conn = setup();
+        begin_interval(&conn, 0).unwrap();
+        end_interval(&conn, 100).unwrap();
+        let days = day_list(0, 100, 3);
+        assert_eq!(get_streak(&conn, &days).unwrap(), 0);
+    }
+
+    #[test]
+    fn streak_counts_trailing_run() {
+        let conn = setup();
+        // Days: [0,100) [100,200) [200,300). Goal 50ms from day 1 (key 2024-01-01).
+        // Fill day 0 and day 2 fully, leave day 1 empty.
+        begin_interval(&conn, 0).unwrap();
+        end_interval(&conn, 100).unwrap();
+        begin_interval(&conn, 200).unwrap();
+        end_interval(&conn, 300).unwrap();
+        set_daily_goal(&conn, "2024-01-01", 50).unwrap();
+        let days = day_list(0, 100, 3);
+        // Last day meets goal, prior day (empty) breaks it.
+        assert_eq!(get_streak(&conn, &days).unwrap(), 1);
+    }
+
+    #[test]
+    fn streak_full_run() {
+        let conn = setup();
+        begin_interval(&conn, 0).unwrap();
+        end_interval(&conn, 300).unwrap();
+        set_daily_goal(&conn, "2024-01-01", 50).unwrap();
+        let days = day_list(0, 100, 3);
+        assert_eq!(get_streak(&conn, &days).unwrap(), 3);
+    }
+
+    #[test]
+    fn streak_clips_border_intervals() {
+        let conn = setup();
+        // One interval straddling the boundary between day 0 and day 1.
+        // Day 0 gets [80,100)=20ms, day 1 gets [100,150)=50ms.
+        begin_interval(&conn, 80).unwrap();
+        end_interval(&conn, 150).unwrap();
+        set_daily_goal(&conn, "2024-01-01", 40).unwrap();
+        let days = day_list(0, 100, 2);
+        // Day 1 has 50 >= 40 (meets), day 0 has 20 < 40 (breaks).
+        assert_eq!(get_streak(&conn, &days).unwrap(), 1);
+    }
+
+    #[test]
+    fn streak_sums_multiple_intervals_per_day() {
+        let conn = setup();
+        // Day 0: two intervals totaling 60ms.
+        begin_interval(&conn, 0).unwrap();
+        end_interval(&conn, 30).unwrap();
+        begin_interval(&conn, 40).unwrap();
+        end_interval(&conn, 70).unwrap();
+        set_daily_goal(&conn, "2024-01-01", 60).unwrap();
+        let days = day_list(0, 100, 1);
+        assert_eq!(get_streak(&conn, &days).unwrap(), 1);
+    }
+
+    #[test]
+    fn streak_goal_change_applies_per_day() {
+        let conn = setup();
+        // Days 0..3 each filled with 100ms.
+        begin_interval(&conn, 0).unwrap();
+        end_interval(&conn, 300).unwrap();
+        set_daily_goal(&conn, "2024-01-01", 50).unwrap(); // days 1..2 use 50
+        set_daily_goal(&conn, "2024-01-03", 150).unwrap(); // day 3 needs 150 -> fails
+        let days = day_list(0, 100, 3);
+        // Last day fails its raised goal immediately.
+        assert_eq!(get_streak(&conn, &days).unwrap(), 0);
     }
 
     #[test]

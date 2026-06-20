@@ -63,6 +63,7 @@
   let fetchedTodayClosedTotal = $state(0);
   let fetchedTodayGoal = $state(0);
   let startMs = $state<number | null>(null);
+  let sidebarLoaded = $state(false);
 
   $effect(() => {
     async function loadSidebar() {
@@ -76,6 +77,7 @@
       if (todayTotalsRes.status === 'ok') fetchedTodayClosedTotal = todayTotalsRes.data[0]?.total_ms ?? 0;
       if (todayGoalsRes.status === 'ok') fetchedTodayGoal = todayGoalsRes.data[0]?.goal_ms ?? 0;
       if (timerRes.status === 'ok') startMs = timerRes.data.state === 'Running' ? timerRes.data.start_ms : null;
+      sidebarLoaded = true;
     }
     loadSidebar();
     return events.intervalChanged.listen(loadSidebar);
@@ -142,25 +144,29 @@
 {/snippet}
 
 <main class="p-8 flex gap-10 px-10 mx-auto max-w-6xl max-h-full">
-  <div class="flex flex-col justify-between gap-4 mt-6 max-h-82">
+  <div class="flex flex-col justify-between gap-4 mt-6 max-h-82 min-w-44">
     <!-- large total -->
     <div class="flex flex-col gap-0.5">
       <span class="text-sm text-neutral-400 font-semibold pl-0.5">This week</span>
       <div class="flex flex-col items-center px-4 pt-6 pb-10 gap-1 bg-accent rounded-xl">
-        <span class="text-5xl font-bold tabular-nums">{formatElapsed(weekTotal, true)}</span>
+        {#if fetchedTotals !== null}
+          <span class="text-5xl font-bold tabular-nums">{formatElapsed(weekTotal, true)}</span>
+        {/if}
       </div>
     </div>
     <!-- large streak -->
     <div class="flex flex-col">
       <span class="text-sm text-neutral-400 font-semibold pl-0.5">Streak</span>
       <div class="flex flex-col px-4 pt-6 pb-12 bg-accent rounded-xl">
-      <div class="flex items-end gap-3">
-        <Flame size={60} strokeWidth={2.5} class="text-orange-500 bg-orange-200 p-2 rounded-2xl" />
-        <div class="flex items-end gap-1">
-          <span class="text-5xl font-bold tabular-nums leading-none">{streak}</span>
-          <span class="text-xl font-semibold text-muted-foreground ">{streak == 1 ? 'day' : 'days'}</span>
+      {#if sidebarLoaded}
+        <div class="flex items-end gap-3">
+          <Flame size={54} strokeWidth={2.5} class="text-orange-500 bg-orange-200 p-2 rounded-2xl" />
+          <div class="flex items-end gap-1">
+            <span class="text-5xl font-bold tabular-nums leading-none">{streak}</span>
+            <span class="text-xl font-semibold text-muted-foreground">{streak === 1 ? 'day' : 'days'}</span>
+          </div>
         </div>
-      </div>
+      {/if}
     </div>
     </div>
   </div>
