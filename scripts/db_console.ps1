@@ -1,4 +1,5 @@
-$db = "$env:APPDATA\com.time-tracker.app\time-tracker.db"
+$identifier = (Get-Content "$PSScriptRoot\..\src-tauri\tauri.conf.json" | ConvertFrom-Json).identifier
+$db = "$env:APPDATA\$identifier\time-tracker.db"
 
 if (-not (Test-Path $db)) {
     Write-Error "Database not found at $db - run the app at least once first."
