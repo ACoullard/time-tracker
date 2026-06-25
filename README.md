@@ -1,97 +1,104 @@
-# Requirements
+# Time Tracker
 
-Stopwatch function. Start and stop a stopwatch.
-    Show in the status bar. System tray on windows
-Time tracking
-    store stop watch sessions and show totals across catagories
-    by day
-    (later) by user specified labels
-Persist data across sessions
+A minimal desktop time tracker for focused work days and habit building.
+Motivated by the lack of non-ad filled timer/tracker alternatives.
 
-# Pages
+<!-- screenshot: hero, main window, timer running -->
+<div align="center">
 
-## Main Page
-- shows the stopwatch currently going
-- allows stopping, starting
-- Shows the total amount so far in the current day
-    - allows setting a goal and shows a progress bar to that goal
+![Main window](./docs/screenshots/hero.png)
 
-## Report page
-- Shows aggregate totals of sessions across categories
-- By date, with options for lookback period
-    - by week
-    - by month
-    - shows an average per day in the lookback period
+</div>
 
-# Architecture:
+---
 
-Rust is source of truth
-JS is display
+## Features
 
-Rust handles:
-    - tracking intervals
+### Track Your Time
 
+Track your time in intervals with the stopwatch on the central page. Sessions are saved automatically to a local database.
 
+<!-- screenshot: main window with timer running -->
+<div align="center">
 
-## Main Page
-- shows the stopwatch currently going
-    calculate from latest interval start time.
-- allows stopping, starting
-    send an event down to rust to register changes to intervals
-- Shows the total amount so far in the current day
-    get a filtered amount if intervals and add up
-    - allows setting a goal and shows a progress bar to that goal
-        
+![Daily goal and sessions](./docs/screenshots/main_screen1.png)
 
-## Report page
-- Shows aggregate totals of sessions across categories
-- By date, with options for lookback period
-    - by week
-    - by month
-    - shows an average per day in the lookback period
+</div>
 
+---
 
-## API
+### Daily Goals & Progress
 
-getCurrentInterval
-    returns the start of the current interval or Null if none is currently running
+Set a daily target in hours and minutes. A circular progress ring will fill as you work showing your progress towards your goal. Today's sessions are listed with their start times, end times, and individual durations.
+Past goals are tracked and persisted, so changing your current goal won't affect the record of your past accomplishments.
 
-beginInterval
-    begins an interval
+---
 
-endInterval
-    ends an interval
+### Weekly Stats
 
-getIntervals
-    allows adding filters. 
-    - Date
-    - (later) custom labels
-    composes the filters and gives a list of resulting intervals in chronological order
+The stats view shows data on each week and overall stats.
+- A bar chart of time logged per day
+- Per-day progress rings toward your goal
+- A weekly total
+- A streak counter that updates each time you reach your daily goal
 
-## Persistence
+Setting goals and seeing results is an important part of habit building. Keeping the streak "alive" can become a great source of motivation to keep going.
 
-SQLite via `rusqlite` (`bundled` feature). Single file at `app_data_dir()/time-tracker.db`. One `Mutex<Connection>` held in Tauri managed state.
+<!-- screenshot: stats page -->
+<div align="center">
 
-Schema lives in `src-tauri/schema.sql` and is embedded at compile time via `include_str!`. Applied with `CREATE TABLE IF NOT EXISTS` at startup. SQLite's ACID guarantees protect against crash mid-write.
+![Weekly stats](./docs/screenshots/stats_screen_heavy_use.png)
 
-Timestamps are stored as unix millis (INTEGER); `end_ms IS NULL` means the interval is currently running.
+</div>
 
-### Resetting the dev database
+---
 
-`CREATE TABLE IF NOT EXISTS` only applies to missing tables — it won't pick up column drops, renames, or type changes to existing tables. When you make a destructive schema change during development, delete the DB file and restart the app:
+### Edit & Clean Up Sessions
 
-```powershell
-Remove-Item "$env:APPDATA\com.time-tracker.app\time-tracker.db"
-```
+Didn't stop the timer on time? Started it a minute late? Click any session's time to edit it. Individual sessions can also be deleted.
 
-Additive changes (new tables, new indexes) don't need a reset — the next startup creates them.
+<!-- screenshot: session row in edit mode -->
+<div align="center">
 
-Once there's real user data to preserve, this gets replaced by a proper migration story (`schema_version` table + numbered migration files).
+![Inline session editing](./docs/screenshots/interval_editing.png)
 
-## System Tray
+</div>
 
-Launches normally with the window visible. Closing the window hides it (`prevent_close` + `hide()`); the timer keeps running in Rust. Quit only via the tray menu.
+---
 
-Tray menu: Show/Hide window, Start/Stop timer, Quit. While an interval is active, a background task updates the tray title (macOS/Linux) or tooltip (Windows) every second with elapsed time.
+### Idle Detection
 
-Requires the `tray-icon` Cargo feature and tray permissions in `capabilities/default.json`.
+If you walk away and forget to stop the timer, its detected by the tracker. When your system goes idle, a small popup appears asking if you're still there.
+You can stop the timer at the last moment of activity, or continue running. Idle detection and session editing keeps your data accurate and allows you to feel like you truly earned your streaks and stats.
+
+<!-- screenshot: idle detection popup -->
+<div align="center">
+
+![Idle detection popup](./docs/screenshots/idle_popup.png)
+
+</div>
+
+---
+
+### System Tray
+
+The app follows an "always on" model and lives in the system tray. The icon reflects whether the timer is running or paused, and the tooltip shows the live elapsed time so you don't have to open the window to check. Start, stop, show, or quit from the tray menu directly. Clicking surfaces or minimizes the main window allowing editing of intervals or viewing of stats.
+
+<!-- screenshot: tray menu open -->
+<div align="center">
+
+![System tray menu](./docs/screenshots/system_tray_running.png)
+
+</div>
+
+---
+
+## Platform Support
+
+Windows and macOS.
+
+---
+
+## Download
+
+> Releases coming soon.
