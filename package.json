@@ -10,7 +10,8 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri",
-    "gen-icons": "node scripts/gen-tray-icons.js"
+    "gen-icons": "node scripts/gen-tray-icons.js",
+    "seed-db": "node scripts/seed_db.js"
   },
   "license": "MIT",
   "dependencies": {
