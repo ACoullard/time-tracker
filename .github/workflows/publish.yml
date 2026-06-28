@@ -7,19 +7,50 @@ on:
       - release
 
 jobs:
+  create-release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.create.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+
+      - name: Create draft release
+        id: create
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          TAG="app-v${VERSION}"
+          gh release create "$TAG" \
+            --title "App v${VERSION}" \
+            --notes "See the assets below to download and install." \
+            --draft
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
   publish-tauri:
+    needs: create-release
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-latest' # for Arm based macs (M1 and above).
+          - platform: 'macos-latest' # Apple Silicon (M1 and above)
             args: '--target aarch64-apple-darwin'
-          - platform: 'macos-latest' # for Intel based macs.
+            label: 'mac-apple-silicon'
+          - platform: 'macos-latest' # Intel Macs
             args: '--target x86_64-apple-darwin'
+            label: 'mac-intel'
           - platform: 'windows-latest'
             args: ''
+            label: 'windows'
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -49,13 +80,29 @@ jobs:
       - name: install frontend dependencies
         run: pnpm install
 
-      - uses: tauri-apps/tauri-action@v0
+      - name: Build Tauri app
+        run: pnpm tauri build ${{ matrix.args }}
+
+      - name: Upload release artifacts
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: app-v__VERSION__
-          releaseName: 'App v__VERSION__'
-          releaseBody: 'See the assets to download this version and install.'
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.args }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.create-release.outputs.tag }}"
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          LABEL="${{ matrix.label }}"
+
+          if [[ "$LABEL" == "mac-apple-silicon" ]]; then
+            DMG=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
+            gh release upload "$TAG" "${DMG}#time-tracker_${VERSION}_mac-apple-silicon.dmg" --clobber
+
+          elif [[ "$LABEL" == "mac-intel" ]]; then
+            DMG=$(find src-tauri/target/x86_64-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
+            gh release upload "$TAG" "${DMG}#time-tracker_${VERSION}_mac-intel.dmg" --clobber
+
+          else
+            EXE=$(find src-tauri/target/release/bundle/nsis -name "*-setup.exe" | head -1)
+            gh release upload "$TAG" "${EXE}#time-tracker_${VERSION}_windows.exe" --clobber
+            MSI=$(find src-tauri/target/release/bundle/msi -name "*.msi" | head -1)
+            gh release upload "$TAG" "${MSI}#time-tracker_${VERSION}_windows.msi" --clobber
+          fi
