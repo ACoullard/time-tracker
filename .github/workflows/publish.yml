@@ -1,11 +1,9 @@
 name: 'publish'
-
 on:
   workflow_dispatch:
   push:
     branches:
       - release
-
 jobs:
   create-release:
     permissions:
@@ -15,12 +13,10 @@ jobs:
       tag: ${{ steps.create.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
-
       - name: setup node
         uses: actions/setup-node@v6
         with:
           node-version: lts/*
-
       - name: Create draft release
         id: create
         env:
@@ -33,7 +29,6 @@ jobs:
             --notes "See the assets below to download and install." \
             --draft
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-
   publish-tauri:
     needs: create-release
     permissions:
@@ -51,38 +46,35 @@ jobs:
           - platform: 'windows-latest'
             args: ''
             label: 'windows'
-
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v7
-
       - name: setup pnpm
         uses: pnpm/action-setup@v6
         with:
           version: latest
-
       - name: setup node
         uses: actions/setup-node@v6
         with:
           node-version: lts/*
           cache: 'pnpm'
-
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
-
       - name: install frontend dependencies
         run: pnpm install
-
       - name: Build Tauri app
+        env:
+          # Ad-hoc sign macOS builds (free, no Apple Developer account).
+          # Avoids the "app is damaged" error on Apple Silicon downloads.
+          # Harmless/ignored on the Windows runner.
+          APPLE_SIGNING_IDENTITY: '-'
         run: pnpm tauri build ${{ matrix.args }}
-
       - name: Upload release artifacts
         shell: bash
         env:
@@ -91,15 +83,12 @@ jobs:
           TAG="${{ needs.create-release.outputs.tag }}"
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
           LABEL="${{ matrix.label }}"
-
           if [[ "$LABEL" == "mac-apple-silicon" ]]; then
             DMG=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
             gh release upload "$TAG" "${DMG}#time-tracker_${VERSION}_mac-apple-silicon.dmg" --clobber
-
           elif [[ "$LABEL" == "mac-intel" ]]; then
             DMG=$(find src-tauri/target/x86_64-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
             gh release upload "$TAG" "${DMG}#time-tracker_${VERSION}_mac-intel.dmg" --clobber
-
           else
             EXE=$(find src-tauri/target/release/bundle/nsis -name "*-setup.exe" | head -1)
             gh release upload "$TAG" "${EXE}#time-tracker_${VERSION}_windows.exe" --clobber
